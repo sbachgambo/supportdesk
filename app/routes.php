@@ -7,13 +7,16 @@ declare(strict_types=1);
  * route, and (non-production only) a route that throws to exercise ErrorHandler.
  */
 
+use App\Controllers\AuthController;
 use App\Core\Config;
 use App\Core\Request;
 use App\Core\Response;
 use App\Core\Router;
+use App\Core\Session;
 use App\Core\View;
 
 $router = new Router();
+$auth = new AuthController();
 
 // Landing page (public). Full landing is built in Phase 9; this is the shell.
 $router->get('/', static function (Request $request): Response {
@@ -22,6 +25,27 @@ $router->get('/', static function (Request $request): Response {
         'title'   => 'P3A Support',
     ]);
     return Response::html($html);
+});
+
+// ── Auth (§9, §10.3, §10.9) ──
+$router->get('/login', [$auth, 'showLogin']);
+$router->post('/login', [$auth, 'login']);
+$router->post('/logout', [$auth, 'logout']);
+$router->get('/forgot', [$auth, 'showForgot']);
+$router->post('/forgot', [$auth, 'forgot']);
+$router->get('/reset', [$auth, 'showReset']);
+$router->post('/reset', [$auth, 'reset']);
+
+// Dashboard (auth-gated). Full role-branched shell is Phase 4; this proves sessions.
+$router->get('/dashboard', static function (Request $request): Response {
+    if (Session::current() === null) {
+        return redirect('login');
+    }
+    return Response::html(View::render('dashboard', [
+        'title' => 'Dashboard — P3A Support',
+        'email' => (string) Session::email(),
+        'role'  => (string) Session::role(),
+    ]));
 });
 
 // Scratch/health route — proves the stack returns JSON end-to-end (§15 Phase 2).

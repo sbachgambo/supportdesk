@@ -12,6 +12,7 @@ use App\Core\Logger;
 use App\Core\Request;
 use App\Core\Router;
 use App\Core\SecurityHeaders;
+use App\Core\Session;
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
@@ -19,6 +20,12 @@ $request = Request::capture();
 
 // Per-request logging context (request id + who/where) — §10.10.
 Logger::boot(bin2hex(random_bytes(8)), $request->ip(), $request->method(), $request->path());
+
+// Validate the session cookie once, early, so Csrf/Rbac see the current session.
+Session::validate($request);
+if (Session::current() !== null) {
+    Logger::setUser((string) (Session::email() ?? '-'));
+}
 
 $path = $request->path();
 
