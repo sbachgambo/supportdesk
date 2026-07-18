@@ -1,0 +1,6 @@
+# Normalize line endings. Source is LF in the repo; Windows checkout can be CRLF.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary

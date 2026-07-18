@@ -1,0 +1,6 @@
+# ── Project-root .htaccess (§10.14) ──
+# Belt-and-braces ONLY. The real control is that this directory is NOT under
+# DocumentRoot — the addon domain points at public/, so nothing here is
+# web-reachable in the first place. Apache 2.4 syntax (Require), not the
+# deprecated 2.2 "Deny from all", and NOT <Directory> (invalid in .htaccess → 500).
+Require all denied

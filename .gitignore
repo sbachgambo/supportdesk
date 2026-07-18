@@ -1,0 +1,24 @@
+# Secrets — never committed (§8, §17.2)
+.env
+.env.testing
+
+# Runtime writable dirs — keep the folders, ignore contents (§6)
+storage/uploads/*
+storage/backups/*
+storage/logs/*
+storage/cache/*
+!storage/uploads/.gitkeep
+!storage/backups/.gitkeep
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+
+# Composer — vendor/ IS committed per §5 (shared hosting); lock is committed
+# (do not ignore vendor/)
+
+# OS / editor cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/

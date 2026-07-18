@@ -1,0 +1,24 @@
+# ── public/.htaccess (§10.14) — the only web-reachable directory ──
+Options -Indexes -MultiViews
+
+RewriteEngine On
+
+# Force HTTPS first, before anything else runs (§10.13)
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Front-controller: route everything that isn't a real file/dir to index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Never serve dotfiles
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
+# Upload size guard (defence in depth; PHP enforces the real limit — §10.7)
+<IfModule mod_php.c>
+  php_value upload_max_filesize 10M
+  php_value post_max_size 12M
+</IfModule>
