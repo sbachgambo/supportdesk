@@ -1,0 +1,12 @@
+/* P3A — base styles (placeholder; themed shell arrives in Phase 4). */
+:root { --p3a-fg: #1f2937; --p3a-accent: #4057f5; }
+* { box-sizing: border-box; }
+body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: var(--p3a-fg);
+    margin: 0;
+    line-height: 1.5;
+}
+.p3a-main { max-width: 48rem; margin: 10vh auto; padding: 0 1rem; }
+.p3a-hero h1, .p3a-error h1 { color: var(--p3a-accent); }
+a { color: var(--p3a-accent); }

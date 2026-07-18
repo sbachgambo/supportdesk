@@ -52,8 +52,11 @@ $scan = function (string $pattern, array $allow, string $label, string $why): vo
                 continue 2;
             }
         }
-        foreach (file($f) as $n => $line) {
-            if (preg_match($pattern, $line)) {
+        // Scan comment-stripped source so keywords/annotations inside comments
+        // (PHPDoc @param, "-- SELECT", …) never register as findings.
+        $code = t_strip_comments((string) file_get_contents($f));
+        foreach (explode("\n", $code) as $n => $line) {
+            if (trim($line) !== '' && preg_match($pattern, $line)) {
                 $hits[] = "{$rel}:" . ($n + 1) . '  ' . trim($line);
             }
         }
@@ -73,8 +76,15 @@ $scan('/\$_(GET|POST|FILES|COOKIE|REQUEST)\b/', ['Core/Request.php'],
     'no $_GET/$_POST/$_FILES/$_COOKIE outside Core/Request.php',
     'raw input is read only in Core\\Request (§16)');
 
-// §10.1 — no obvious SQL string interpolation (variable inside a quoted SQL verb)
-$scan('/(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|VALUES)\b[^;\n]*["\']\s*\.\s*\$|\$\w+[^;\n]*(FROM|WHERE|INTO|SET)\b[^;\n]*["\']/i',
+// §10.1 — no SQL string interpolation. Two shapes:
+//   (a) a variable interpolated INSIDE a quoted string that contains a SQL keyword
+//       e.g. "SELECT * FROM $table"  /  "... WHERE id = $id"
+//   (b) a quoted SQL keyword string CONCATENATED with a variable
+//       e.g. "SELECT ... FROM " . $table
+$sqlKw = 'SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|JOIN';
+$scan(
+    '/"[^"\n]*\b(' . $sqlKw . ')\b[^"\n]*\$\w+' .          // (a) interpolation in string
+    '|\b(' . $sqlKw . ')\b[^;\n]*["\']\s*\.\s*\$\w+/i',    // (b) concat with a var
     ['Core/Db.php'],
     'no SQL string interpolation',
     'every query is a prepared statement with bound params (§10.1)');
@@ -84,7 +94,10 @@ $scan('/\b(var_dump|print_r|var_export)\s*\(/', ['tests/'], 'no var_dump/print_r
     'no debug output left behind (§16)');
 $scan('/\beval\s*\(/', [], 'no eval() in app/', 'never eval (§16)');
 $scan('/\bunserialize\s*\(/', [], 'no unserialize() in app/', 'JSON only; never unserialize untrusted data (§10, §16)');
-$scan('/(^|[^a-zA-Z0-9_>])@[a-zA-Z_]/', [], 'no @ error suppression in app/', 'never suppress errors with @ (§16)');
+// Error suppression is `@func(...)` or `@$var`. Exclude `@` inside identifiers
+// (e.g. an email in a string literal: the char before @ is a word char there).
+$scan('/(^|[^\w"\'\/@.])@([a-zA-Z_]\w*\s*\(|\$)/', [], 'no @ error suppression in app/',
+    'never suppress errors with @ (§16)');
 
 T::suite('Static: repo hygiene (§17.2)');
 

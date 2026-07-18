@@ -25,6 +25,9 @@ if (!$staticOnly) {
         foreach (glob("$root/tests/phases/Phase*Test.php") ?: [] as $p) {
             $suites[] = $p;
         }
+        if (is_file("$root/tests/smoke_http.php")) {
+            $suites[] = "$root/tests/smoke_http.php";
+        }
         if (is_file("$root/tests/SecuritySuite.php")) {
             $suites[] = "$root/tests/SecuritySuite.php";
         }

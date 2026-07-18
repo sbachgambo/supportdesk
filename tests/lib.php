@@ -99,6 +99,30 @@ function t_files(string $dir, string $ext): array
     return $out;
 }
 
+/**
+ * Return $code with all comments replaced by blanks, preserving line numbers
+ * (newlines inside a comment are kept). String literals are preserved so SQL
+ * detection still works. Used by the static scans to avoid matching keywords or
+ * annotations that live in comments (e.g. PHPDoc @param, "-- SELECT").
+ */
+function t_strip_comments(string $code): string
+{
+    $out = '';
+    foreach (token_get_all($code) as $tok) {
+        if (is_array($tok)) {
+            if ($tok[0] === T_COMMENT || $tok[0] === T_DOC_COMMENT) {
+                // keep the newlines so line numbers stay aligned
+                $out .= str_repeat("\n", substr_count($tok[1], "\n"));
+                continue;
+            }
+            $out .= $tok[1];
+        } else {
+            $out .= $tok;
+        }
+    }
+    return $out;
+}
+
 /** Load a KEY=VALUE env file into an associative array (no interpolation). */
 function t_load_env(string $path): array
 {
