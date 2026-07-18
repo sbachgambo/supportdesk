@@ -19,6 +19,12 @@ require __DIR__ . '/lib.php';
 $root = dirname(__DIR__);
 chdir($root);
 
+// Autoloader is needed for the gateway orphan check (reflects Dispatch). No DB is
+// touched by loading these classes.
+if (is_file("$root/vendor/autoload.php")) {
+    require_once "$root/vendor/autoload.php";
+}
+
 T::suite('Static: php -l (syntax) on every PHP file');
 $phpFiles = array_merge(
     t_files("$root/app", 'php'),
@@ -36,6 +42,25 @@ foreach ($phpFiles as $f) {
     $code = 0;
     exec('php -l ' . escapeshellarg($f) . ' 2>&1', $out, $code);
     T::ok($code === 0, "lint {$rel}" . ($code === 0 ? '' : ': ' . implode(' ', $out)));
+}
+
+// ── JS syntax check on our own scripts (node --check), if node is available ──
+T::suite('Static: JS syntax (node --check)');
+exec('node --version 2>&1', $nodeOut, $nodeCode);
+if ($nodeCode !== 0) {
+    T::note('node not available — skipping JS syntax checks');
+} else {
+    $jsFiles = array_filter(t_files("$root/public/assets/js", 'js'), static fn(string $p): bool => !str_contains($p, '/vendor/'));
+    if ($jsFiles === []) {
+        T::note('no first-party JS yet');
+    }
+    foreach ($jsFiles as $js) {
+        $rel = ltrim(str_replace($root, '', $js), '/');
+        $out = [];
+        $code = 0;
+        exec('node --check ' . escapeshellarg($js) . ' 2>&1', $out, $code);
+        T::ok($code === 0, "js syntax {$rel}" . ($code === 0 ? '' : ': ' . implode(' ', $out)));
+    }
 }
 
 /**
@@ -116,5 +141,52 @@ if ($gitCode === 0) {
 $example = is_file("$root/.env.example") ? file_get_contents("$root/.env.example") : '';
 $leaks = preg_match('/^(APP_KEY|DB_PASS|MAIL_PASS|IMAP_PASS)=\S+/m', $example);
 T::ok($leaks === 0, '.env.example carries no real secret values');
+
+// ── Gateway wiring: no orphan actions (§9, §17.2) ──
+if (class_exists('App\\Core\\Dispatch')) {
+    T::suite('Static: gateway wiring (§9)');
+    $requires = array_keys(App\Core\Dispatch::REQUIRES);
+    $public   = App\Core\Dispatch::PUBLIC_ACTIONS;
+    $handlers = App\Core\Dispatch::actionNames();
+
+    $missing = array_diff($requires, $handlers);
+    T::ok($missing === [], 'every REQUIRES action has a handler' . ($missing ? ': ' . implode(',', $missing) : ''));
+
+    $orphans = array_diff($handlers, array_merge($requires, $public));
+    T::ok($orphans === [], 'no handler lacks a REQUIRES entry or PUBLIC_ACTIONS membership (default-deny)' . ($orphans ? ': ' . implode(',', $orphans) : ''));
+
+    $missingPub = array_diff($public, $handlers);
+    T::ok($missingPub === [], 'every PUBLIC_ACTION has a handler' . ($missingPub ? ': ' . implode(',', $missingPub) : ''));
+
+    $both = array_intersect($public, $requires);
+    T::ok($both === [], 'no action is both public and authorization-gated' . ($both ? ': ' . implode(',', $both) : ''));
+}
+
+// ── Views: strict-CSP + escaping invariants (§10.2, D5) ──
+T::suite('Static: views (§10.2, D5)');
+$inline = [];
+$offOrigin = [];
+$unescaped = [];
+foreach (t_files("$root/app/Views", 'php') as $f) {
+    $rel = ltrim(str_replace($root, '', $f), '/');
+    foreach (file($f) as $n => $line) {
+        $loc = "{$rel}:" . ($n + 1) . '  ' . trim($line);
+        // inline event-handler attributes (onclick=, onchange=, …) — forbidden by D5
+        if (preg_match('/\bon(click|change|submit|input|load|mouseover|mouseout|mousedown|mouseup|keydown|keyup|keypress|focus|blur|error|scroll|toggle|change)\w*\s*=\s*["\']/i', $line)) {
+            $inline[] = $loc;
+        }
+        // off-origin <script>/<link> (a CDN) — forbidden; everything is self-hosted
+        if (preg_match('/<(script|link)\b[^>]*\b(src|href)\s*=\s*["\']https?:/i', $line)) {
+            $offOrigin[] = $loc;
+        }
+        // direct echo of a variable without escaping — must go through e()/raw()/helper
+        if (preg_match('/<\?=\s*\$/', $line)) {
+            $unescaped[] = $loc;
+        }
+    }
+}
+T::ok($inline === [], 'no inline on*= handlers in views (D5)' . ($inline ? "\n      " . implode("\n      ", $inline) : ''));
+T::ok($offOrigin === [], 'no off-origin script/link in views — no CDN (§10.15)' . ($offOrigin ? "\n      " . implode("\n      ", $offOrigin) : ''));
+T::ok($unescaped === [], 'no `<?= $var` — output escaped via e()/raw() (§10.2)' . ($unescaped ? "\n      " . implode("\n      ", $unescaped) : ''));
 
 exit(T::summary());

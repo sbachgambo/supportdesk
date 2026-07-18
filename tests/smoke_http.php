@@ -105,6 +105,37 @@ try {
     T::suite('Smoke: 404');
     [$st] = $get("$base/no-such-route");
     T::eq(404, $st, 'unknown route → 404');
+
+    // ── Phase 4: gateway + shell over real HTTP ──
+    T::suite('Smoke: gateway & shell (Phase 4)');
+    // unauthenticated dashboard → redirect to login
+    [$st, $hdr] = $get("$base/dashboard");
+    T::ok(in_array($st, [301, 302], true) && stripos($hdr, 'login') !== false,
+        'unauthenticated /dashboard → redirect to /login');
+
+    // /api unknown action over HTTP → JSON ok:false
+    $post = static function (string $url, array $data): array {
+        $ctx = stream_context_create(['http' => [
+            'method' => 'POST', 'header' => "Content-Type: application/json\r\n",
+            'content' => json_encode($data), 'ignore_errors' => true, 'timeout' => 5,
+        ]]);
+        $body = file_get_contents($url, false, $ctx);
+        $status = 0;
+        if (isset($http_response_header[0]) && preg_match('#\s(\d{3})\s#', $http_response_header[0], $m)) {
+            $status = (int) $m[1];
+        }
+        return [$status, json_decode((string) $body, true)];
+    };
+    [$st, $body] = $post("$base/api", ['action' => 'noSuchAction', 'payload' => [], 'csrf' => 'x']);
+    T::eq(400, $st, '/api unknown action → 400');
+    T::ok(($body['ok'] ?? true) === false, '/api unknown action → ok:false JSON');
+
+    // login page assets are same-origin only (no CDN), and CSP has script-src 'self'
+    [, , $loginBody] = $get("$base/login");
+    T::ok(!preg_match('/<(script|link)\b[^>]+(src|href)=["\']https?:\/\//i', $loginBody),
+        'login page references no off-origin assets (no CDN)');
+    T::ok(!preg_match('/\son(click|change|submit)\s*=/i', $loginBody),
+        'login page has no inline event handlers (D5)');
 } finally {
     // Shut the server down. On Windows, proc_open via the shell means $proc's PID is
     // the cmd wrapper, not php -S — proc_terminate would orphan the server and leak

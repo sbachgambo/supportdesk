@@ -1,12 +1,89 @@
-/* P3A — base styles (placeholder; themed shell arrives in Phase 4). */
-:root { --p3a-fg: #1f2937; --p3a-accent: #4057f5; }
+/* P3A base + theme (Phase 4). Theme is driven by [data-theme] on <html>, set by
+   theme-init.js before paint and toggled by app.js. Light + dark are both defined. */
+
+:root,
+:root[data-theme="light"] {
+    --p3a-bg: #f6f7fb;
+    --p3a-surface: #ffffff;
+    --p3a-fg: #1f2937;
+    --p3a-muted: #6b7280;
+    --p3a-border: #e5e7eb;
+    --p3a-accent: #4057f5;
+    --p3a-accent-fg: #ffffff;
+    --p3a-danger: #b42318;
+    --p3a-danger-bg: #fef3f2;
+    --p3a-ok-bg: #ecfdf3;
+    --p3a-ok-fg: #027a48;
+}
+:root[data-theme="dark"] {
+    --p3a-bg: #0f1420;
+    --p3a-surface: #171d2b;
+    --p3a-fg: #e5e7eb;
+    --p3a-muted: #9aa4b2;
+    --p3a-border: #2a3346;
+    --p3a-accent: #7c8cff;
+    --p3a-accent-fg: #0f1420;
+    --p3a-danger: #ff9d92;
+    --p3a-danger-bg: #2a1614;
+    --p3a-ok-bg: #10241b;
+    --p3a-ok-fg: #6ee7a8;
+}
+
 * { box-sizing: border-box; }
+html, body { margin: 0; }
 body {
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--p3a-bg);
     color: var(--p3a-fg);
-    margin: 0;
     line-height: 1.5;
 }
-.p3a-main { max-width: 48rem; margin: 10vh auto; padding: 0 1rem; }
-.p3a-hero h1, .p3a-error h1 { color: var(--p3a-accent); }
 a { color: var(--p3a-accent); }
+button {
+    font: inherit;
+    cursor: pointer;
+    border: 1px solid var(--p3a-border);
+    background: var(--p3a-surface);
+    color: var(--p3a-fg);
+    border-radius: .375rem;
+    padding: .4rem .75rem;
+}
+button[type="submit"] {
+    background: var(--p3a-accent);
+    color: var(--p3a-accent-fg);
+    border-color: transparent;
+}
+
+/* ── public/auth pages (main layout) ── */
+.p3a-main { max-width: 30rem; margin: 8vh auto; padding: 1.5rem; }
+.p3a-hero h1, .p3a-error h1 { color: var(--p3a-accent); }
+.p3a-auth {
+    max-width: 24rem; margin: 8vh auto; padding: 2rem;
+    background: var(--p3a-surface); border: 1px solid var(--p3a-border); border-radius: .75rem;
+}
+.p3a-auth label { display: block; margin: .75rem 0 .25rem; font-weight: 600; }
+.p3a-auth input {
+    width: 100%; padding: .55rem .7rem; border: 1px solid var(--p3a-border);
+    border-radius: .375rem; background: var(--p3a-bg); color: var(--p3a-fg);
+}
+.p3a-auth button { margin-top: 1rem; width: 100%; }
+.p3a-error-msg { background: var(--p3a-danger-bg); color: var(--p3a-danger); padding: .6rem .8rem; border-radius: .375rem; }
+.p3a-notice { background: var(--p3a-ok-bg); color: var(--p3a-ok-fg); padding: .6rem .8rem; border-radius: .375rem; }
+
+/* ── authenticated app shell ── */
+.p3a-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .75rem 1.25rem; background: var(--p3a-surface); border-bottom: 1px solid var(--p3a-border);
+}
+.p3a-brand { font-weight: 700; color: var(--p3a-accent); }
+.p3a-nav { display: flex; align-items: center; gap: .75rem; }
+.p3a-user { color: var(--p3a-muted); font-size: .9rem; }
+.p3a-logout { margin: 0; }
+.p3a-app { max-width: 60rem; margin: 2rem auto; padding: 0 1.25rem; }
+.p3a-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.p3a-card {
+    background: var(--p3a-surface); border: 1px solid var(--p3a-border);
+    border-radius: .625rem; padding: 1rem;
+}
+.p3a-card h2 { margin: 0 0 .25rem; font-size: .8rem; color: var(--p3a-muted); text-transform: uppercase; letter-spacing: .03em; }
+.p3a-metric { margin: 0; font-size: 1.75rem; font-weight: 700; }
+.p3a-hint, .p3a-greeting { color: var(--p3a-muted); }

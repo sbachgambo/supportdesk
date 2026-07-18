@@ -40,10 +40,16 @@ if (!function_exists('url')) {
 }
 
 if (!function_exists('asset')) {
-    /** URL to a file under public/assets. */
+    /**
+     * ROOT-RELATIVE URL to a file under public/assets. Relative (not absolute) so
+     * asset references are unambiguously same-origin — keeping the strict CSP and
+     * the "no off-origin resources" guarantee simple. Honours an APP_URL subpath.
+     */
     function asset(string $path): string
     {
-        return url('assets/' . ltrim($path, '/'));
+        $base = parse_url(Config::string('APP_URL'), PHP_URL_PATH);
+        $base = is_string($base) ? rtrim($base, '/') : '';
+        return $base . '/assets/' . ltrim($path, '/');
     }
 }
 

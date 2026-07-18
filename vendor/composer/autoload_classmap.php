@@ -6,10 +6,12 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
+    'App\\Controllers\\ApiActions' => $baseDir . '/app/Controllers/ApiActions.php',
     'App\\Controllers\\AuthController' => $baseDir . '/app/Controllers/AuthController.php',
     'App\\Core\\Config' => $baseDir . '/app/Core/Config.php',
     'App\\Core\\Csrf' => $baseDir . '/app/Core/Csrf.php',
     'App\\Core\\Db' => $baseDir . '/app/Core/Db.php',
+    'App\\Core\\Dispatch' => $baseDir . '/app/Core/Dispatch.php',
     'App\\Core\\ErrorHandler' => $baseDir . '/app/Core/ErrorHandler.php',
     'App\\Core\\Logger' => $baseDir . '/app/Core/Logger.php',
     'App\\Core\\Request' => $baseDir . '/app/Core/Request.php',
@@ -18,6 +20,8 @@ return array(
     'App\\Core\\SecurityHeaders' => $baseDir . '/app/Core/SecurityHeaders.php',
     'App\\Core\\Session' => $baseDir . '/app/Core/Session.php',
     'App\\Core\\View' => $baseDir . '/app/Core/View.php',
+    'App\\Models\\AppConfig' => $baseDir . '/app/Models/AppConfig.php',
+    'App\\Models\\Category' => $baseDir . '/app/Models/Category.php',
     'App\\Models\\User' => $baseDir . '/app/Models/User.php',
     'App\\Security\\Audit' => $baseDir . '/app/Security/Audit.php',
     'App\\Security\\Auth' => $baseDir . '/app/Security/Auth.php',

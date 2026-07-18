@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 use App\Controllers\AuthController;
 use App\Core\Config;
+use App\Core\Dispatch;
 use App\Core\Request;
 use App\Core\Response;
 use App\Core\Router;
@@ -17,6 +18,9 @@ use App\Core\View;
 
 $router = new Router();
 $auth = new AuthController();
+
+// THE action gateway (§9). Every data/state operation POSTs here as {action,payload,csrf}.
+$router->post('/api', static fn(Request $request): Response => Dispatch::handle($request));
 
 // Landing page (public). Full landing is built in Phase 9; this is the shell.
 $router->get('/', static function (Request $request): Response {
@@ -42,10 +46,12 @@ $router->get('/dashboard', static function (Request $request): Response {
         return redirect('login');
     }
     return Response::html(View::render('dashboard', [
-        'title' => 'Dashboard — P3A Support',
-        'email' => (string) Session::email(),
-        'role'  => (string) Session::role(),
-    ]));
+        'title'   => 'Dashboard — P3A Support',
+        'email'   => (string) Session::email(),
+        'role'    => (string) Session::role(),
+        'csrf'    => \App\Core\Csrf::token(),
+        'company' => \App\Models\AppConfig::get('company_name', 'P3A Support'),
+    ], 'app'));
 });
 
 // Scratch/health route — proves the stack returns JSON end-to-end (§15 Phase 2).

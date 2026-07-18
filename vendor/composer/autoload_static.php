@@ -33,10 +33,12 @@ class ComposerStaticInit312e6071943076b7e37df53b1d340338
     );
 
     public static $classMap = array (
+        'App\\Controllers\\ApiActions' => __DIR__ . '/../..' . '/app/Controllers/ApiActions.php',
         'App\\Controllers\\AuthController' => __DIR__ . '/../..' . '/app/Controllers/AuthController.php',
         'App\\Core\\Config' => __DIR__ . '/../..' . '/app/Core/Config.php',
         'App\\Core\\Csrf' => __DIR__ . '/../..' . '/app/Core/Csrf.php',
         'App\\Core\\Db' => __DIR__ . '/../..' . '/app/Core/Db.php',
+        'App\\Core\\Dispatch' => __DIR__ . '/../..' . '/app/Core/Dispatch.php',
         'App\\Core\\ErrorHandler' => __DIR__ . '/../..' . '/app/Core/ErrorHandler.php',
         'App\\Core\\Logger' => __DIR__ . '/../..' . '/app/Core/Logger.php',
         'App\\Core\\Request' => __DIR__ . '/../..' . '/app/Core/Request.php',
@@ -45,6 +47,8 @@ class ComposerStaticInit312e6071943076b7e37df53b1d340338
         'App\\Core\\SecurityHeaders' => __DIR__ . '/../..' . '/app/Core/SecurityHeaders.php',
         'App\\Core\\Session' => __DIR__ . '/../..' . '/app/Core/Session.php',
         'App\\Core\\View' => __DIR__ . '/../..' . '/app/Core/View.php',
+        'App\\Models\\AppConfig' => __DIR__ . '/../..' . '/app/Models/AppConfig.php',
+        'App\\Models\\Category' => __DIR__ . '/../..' . '/app/Models/Category.php',
         'App\\Models\\User' => __DIR__ . '/../..' . '/app/Models/User.php',
         'App\\Security\\Audit' => __DIR__ . '/../..' . '/app/Security/Audit.php',
         'App\\Security\\Auth' => __DIR__ . '/../..' . '/app/Security/Auth.php',
