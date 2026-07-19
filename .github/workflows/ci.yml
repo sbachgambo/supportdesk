@@ -1,0 +1,76 @@
+name: CI
+
+# Runs the full P3A test suite (StaticSuite + all phase tests + HTTP smoke +
+# SecuritySuite) on every push and pull request. Everything is self-contained:
+# a MySQL service provides the DB, and the two env files are generated here
+# (they are gitignored and never committed).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: p3a_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd, openssl, fileinfo, zip
+          coverage: none
+
+      - name: Install MySQL client (mysqldump / mysql for the backup test)
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent; then
+              echo "MySQL is up"; break
+            fi
+            echo "waiting for mysql ($i)…"; sleep 2
+          done
+
+      - name: Generate env files (gitignored; CI-only)
+        run: |
+          KEY=$(php -r 'echo base64_encode(random_bytes(32));')
+          cat > .env.testing <<EOF
+          APP_ENV=testing
+          APP_URL=http://localhost
+          APP_KEY=$KEY
+          APP_TIMEZONE=Africa/Lagos
+          DB_HOST=127.0.0.1
+          DB_NAME=p3a_test
+          DB_USER=root
+          DB_PASS=root
+          DB_CHARSET=utf8mb4
+          PASSWORD_BREACH_CHECK=local
+          SUPPRESS_EMAIL_DOMAINS=example.com,test.com
+          MYSQLDUMP_BIN=mysqldump
+          MAIL_PRETEND=1
+          MAIL_FROM=support@p3a-support.com.ng
+          EOF
+          # The HTTP smoke test boots the app from .env and needs APP_ENV != production
+          # (so the /__boom route exists). Mirror the testing DB.
+          sed 's/^APP_ENV=testing/APP_ENV=local/' .env.testing > .env
+
+      - name: Run full test suite
+        run: php tests/run_all.php
