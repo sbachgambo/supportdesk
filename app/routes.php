@@ -35,6 +35,9 @@ $router->get('/admin/rules', static function (Request $request): Response {
     if (Session::current() === null) {
         return redirect('login');
     }
+    if (!Session::isMfaVerified()) {
+        return redirect('mfa');
+    }
     if (Session::role() !== 'admin') {
         return redirect('dashboard');
     }
@@ -52,6 +55,9 @@ $router->get('/admin/rules', static function (Request $request): Response {
 $router->get('/reports', static function (Request $request): Response {
     if (Session::current() === null) {
         return redirect('login');
+    }
+    if (!Session::isMfaVerified()) {
+        return redirect('mfa');
     }
     if (!\App\Security\Rbac::isAtLeastAgent()) {
         return redirect('dashboard');
@@ -84,10 +90,28 @@ $router->post('/forgot', [$auth, 'forgot']);
 $router->get('/reset', [$auth, 'showReset']);
 $router->post('/reset', [$auth, 'reset']);
 
+// MFA challenge / enrolment page (D8). Reachable by an unverified session.
+$router->get('/mfa', static function (Request $request): Response {
+    if (Session::current() === null) {
+        return redirect('login');
+    }
+    if (Session::isMfaVerified()) {
+        return redirect('dashboard');
+    }
+    return Response::html(View::render('mfa', [
+        'title'      => 'Two-factor verification — P3A Support',
+        'csrf'       => \App\Core\Csrf::token(),
+        'pageScript' => 'mfa.js',
+    ], 'main'));
+});
+
 // Dashboard (auth-gated). Full role-branched shell is Phase 4; this proves sessions.
 $router->get('/dashboard', static function (Request $request): Response {
     if (Session::current() === null) {
         return redirect('login');
+    }
+    if (!Session::isMfaVerified()) {
+        return redirect('mfa'); // unverified sessions must clear MFA first (D8)
     }
     return Response::html(View::render('dashboard', [
         'title'   => 'Dashboard — P3A Support',

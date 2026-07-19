@@ -77,11 +77,11 @@ final class Auth
         }
         User::touchLastLogin((int) $user['id']);
 
-        // MFA gate (D8): an admin who has enrolled TOTP starts unverified and must
-        // clear the /mfa challenge before the session can act. Non-admins and
-        // not-yet-enrolled admins are verified immediately. TOTP itself is Phase 12.
+        // MFA gate (D8): admins ALWAYS start unverified — enrolled ones clear the /mfa
+        // challenge, not-yet-enrolled ones are forced through enrolment before the
+        // session can act. Agents need it only once they self-enrol. Customers never.
         $role = (string) $user['role'];
-        $mfaRequired = $role === 'admin' && (int) $user['totp_enabled'] === 1;
+        $mfaRequired = $role === 'admin' || ($role === 'agent' && (int) $user['totp_enabled'] === 1);
 
         Session::start(
             (int) $user['id'],

@@ -18,6 +18,7 @@ CREATE TABLE users (
   active         TINYINT(1) NOT NULL DEFAULT 1,
   totp_secret    VARBINARY(255) NULL,                      -- encrypted with APP_KEY; NULL = not enrolled
   totp_enabled   TINYINT(1) NOT NULL DEFAULT 0,
+  totp_last_step BIGINT NULL,                              -- last consumed TOTP time-step (replay reject, D8)
   must_change_pw TINYINT(1) NOT NULL DEFAULT 0,            -- set on admin-set passwords
   last_login_at  DATETIME NULL,
   created_at     DATETIME NOT NULL,

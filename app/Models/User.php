@@ -114,6 +114,28 @@ final class User
         Db::update('users', ['password_hash' => $hash, 'must_change_pw' => 1], 'id = :id', [':id' => $id]);
     }
 
+    // ── TOTP (D8) ────────────────────────────────────────────────────────────
+    /** Store the encrypted secret (pending enrolment; not enabled yet). */
+    public static function setTotpSecret(int $id, string $encryptedBlob): void
+    {
+        Db::update('users', ['totp_secret' => $encryptedBlob, 'totp_enabled' => 0, 'totp_last_step' => null], 'id = :id', [':id' => $id]);
+    }
+
+    public static function enableTotp(int $id): void
+    {
+        Db::update('users', ['totp_enabled' => 1], 'id = :id', [':id' => $id]);
+    }
+
+    public static function disableTotp(int $id): void
+    {
+        Db::update('users', ['totp_secret' => null, 'totp_enabled' => 0, 'totp_last_step' => null], 'id = :id', [':id' => $id]);
+    }
+
+    public static function setTotpLastStep(int $id, int $step): void
+    {
+        Db::update('users', ['totp_last_step' => $step], 'id = :id', [':id' => $id]);
+    }
+
     public static function delete(int $id): void
     {
         Db::delete('users', 'id = :id', [':id' => $id]);

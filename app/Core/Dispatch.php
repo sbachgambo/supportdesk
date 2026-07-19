@@ -40,6 +40,12 @@ final class Dispatch
     public const REQUIRES = [
         'getMe'           => 'auth',
         'getSystemConfig' => 'admin',
+        // MFA (Phase 12) — all authed; pre-verify ones are also in MFA_PREVERIFY_ACTIONS.
+        'getMfaStatus' => 'auth',
+        'enrollTotp'   => 'auth',
+        'confirmTotp'  => 'auth',
+        'verifyMfa'    => 'auth',
+        'disableTotp'  => 'auth',
         // Tickets (Phase 5) — staff only. Customer/owner read paths arrive in Phase 6.
         'createTicket'        => 'agent',
         'getTickets'          => 'agent',
@@ -99,6 +105,9 @@ final class Dispatch
         'deleteCannedResponse'   => 'agent',
     ];
 
+    /** Actions reachable by an authenticated-but-not-yet-MFA-verified session (D8). */
+    private const MFA_PREVERIFY_ACTIONS = ['getMfaStatus', 'enrollTotp', 'confirmTotp', 'verifyMfa', 'getMe'];
+
     private const GENERIC_ERROR = 'The request could not be completed.';
 
     public static function handle(Request $request): Response
@@ -132,12 +141,14 @@ final class Dispatch
             return self::error('Your session token was missing or invalid. Refresh and try again.', 419);
         }
 
-        // ── Gate 4: authentication (+ MFA gate for admins) ──
+        // ── Gate 4: authentication (+ MFA gate) ──
         if (!$isPublic) {
             if (Session::current() === null) {
                 return self::error('Authentication required.', 401);
             }
-            if (Session::role() === 'admin' && !Session::isMfaVerified()) {
+            // A session created for an MFA-requiring user starts unverified: it can do
+            // NOTHING except the MFA enrol/verify actions until it is verified (D8).
+            if (!Session::isMfaVerified() && !in_array($action, self::MFA_PREVERIFY_ACTIONS, true)) {
                 return self::error('Multi-factor verification required.', 403, ['mfa_required' => true]);
             }
         }
@@ -201,9 +212,15 @@ final class Dispatch
         $kb = new \App\Controllers\KbActions();
         $notifs = new \App\Controllers\NotificationActions();
         $canned = new \App\Controllers\CannedResponseActions();
+        $mfa = new \App\Controllers\MfaActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
+            'getMfaStatus'         => [$mfa, 'getMfaStatus'],
+            'enrollTotp'           => [$mfa, 'enrollTotp'],
+            'confirmTotp'          => [$mfa, 'confirmTotp'],
+            'verifyMfa'            => [$mfa, 'verifyMfa'],
+            'disableTotp'          => [$mfa, 'disableTotp'],
             'submitTicket'         => [$public, 'submitTicket'],
             'checkTicketStatus'    => [$public, 'checkTicketStatus'],
             'getPublicKb'          => [$kb, 'getPublicKb'],
