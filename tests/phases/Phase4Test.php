@@ -22,6 +22,7 @@ use App\Core\Dispatch;
 use App\Core\Request;
 use App\Core\Session;
 use App\Models\User;
+use App\Security\PasswordPolicy;
 
 $envTesting = $root . '/.env.testing';
 if (!is_file($envTesting)) {
@@ -126,5 +127,29 @@ T::suite('Phase 4: gate ordering');
 Session::start((int) $customer['id'], (string) $customer['email'], 'customer', $IP, 'ua', true);
 [$st, $body] = $call('getSystemConfig', [], 'bad-csrf-token');
 T::eq(419, $st, 'bad CSRF on an admin action → 419 (CSRF gate precedes authz)');
+
+// ── Self-service password change (§10.3, §10.4) ──────────────────────────────
+T::suite('Phase 4: self-service password change');
+Session::destroy();
+$knownPw = 'Current-Pass-123456';
+User::updatePasswordHash((int) $customer['id'], PasswordPolicy::hash($knownPw), false);
+Session::start((int) $customer['id'], (string) $customer['email'], 'customer', $IP, 'ua', true);
+
+[$st, $body] = $call('changeMyPassword', ['current_password' => 'nope-nope-nope-01', 'new_password' => 'Brand-New-Pass-99'], Csrf::token());
+T::eq(422, $st, 'wrong current password → 422');
+
+[$st, $body] = $call('changeMyPassword', ['current_password' => $knownPw, 'new_password' => 'short'], Csrf::token());
+T::eq(422, $st, 'new password below policy → 422');
+
+[$st, $body] = $call('changeMyPassword', ['current_password' => $knownPw, 'new_password' => $knownPw], Csrf::token());
+T::eq(422, $st, 'reusing the current password → 422');
+
+$newPw = 'Fresh-Long-Pass-2026';
+[$st, $body] = $call('changeMyPassword', ['current_password' => $knownPw, 'new_password' => $newPw], Csrf::token());
+T::eq(200, $st, 'valid password change → 200');
+$after = User::findById((int) $customer['id']);
+T::ok(PasswordPolicy::verify($newPw, (string) $after['password_hash']), 'new password now verifies');
+T::ok(!PasswordPolicy::verify($knownPw, (string) $after['password_hash']), 'old password no longer verifies');
+T::eq(0, (int) $after['must_change_pw'], 'must_change_pw cleared after change');
 
 exit(T::summary());

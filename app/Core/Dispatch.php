@@ -38,8 +38,9 @@ final class Dispatch
 
     /** Authorization requirements for authenticated actions (§9). 'owner' is per-record (Phase 6). */
     public const REQUIRES = [
-        'getMe'           => 'auth',
-        'getSystemConfig' => 'admin',
+        'getMe'             => 'auth',
+        'changeMyPassword'  => 'auth',
+        'getSystemConfig'   => 'admin',
         // MFA (Phase 12) — all authed; pre-verify ones are also in MFA_PREVERIFY_ACTIONS.
         'getMfaStatus' => 'auth',
         'enrollTotp'   => 'auth',
@@ -227,6 +228,7 @@ final class Dispatch
             'checkTicketStatus'    => [$public, 'checkTicketStatus'],
             'getPublicKb'          => [$kb, 'getPublicKb'],
             'getMe'                => [$actions, 'getMe'],
+            'changeMyPassword'     => [$actions, 'changeMyPassword'],
             'getSystemConfig'      => [$actions, 'getSystemConfig'],
             // Tickets (Phase 5)
             'getDashboardData'     => [$tickets, 'getDashboardData'],

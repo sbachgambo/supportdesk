@@ -20,7 +20,11 @@
     }
     function msg(text, err) {
         var el = root.querySelector('[data-bind="mfa-msg"]');
-        if (el) { el.textContent = text; el.classList.toggle('is-error', !!err); }
+        if (!el) { return; }
+        el.textContent = text || '';
+        el.classList.toggle('error', !!err);
+        el.classList.toggle('info', !err && !!text);
+        el.classList.toggle('show', !!text);
     }
     function fieldVal(region, name) {
         var el = root.querySelector('[data-region="' + region + '"] [name="' + name + '"]');

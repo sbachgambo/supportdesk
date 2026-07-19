@@ -29,7 +29,7 @@
     }
 
     // ── state ─────────────────────────────────────────────────────────────────
-    var state = { view: 'dashboard', ticket: null, agents: [], canned: [], page: {}, cache: {} };
+    var state = { view: 'dashboard', ticket: null, agents: [], canned: [], page: {}, cache: {}, forcedPw: false };
 
     // ── boot ──────────────────────────────────────────────────────────────────
     async function boot() {
@@ -40,6 +40,38 @@
         refreshCounts();
         refreshBadge();
         switchView('dashboard');
+        // Force a password change if the account was created/reset with a temp password.
+        var me = await api('getMe');
+        if (me && me.ok && me.data && me.data.must_change_pw) { openChangePw(true); }
+    }
+
+    // ── change password (self-service + forced must_change_pw flow) ─────────────
+    function openChangePw(forced) {
+        state.forcedPw = !!forced;
+        var m = region('changepw-modal');
+        q('[data-bind="changepw-err"]').classList.remove('show');
+        var form = q('form[data-action="change-pw"]'); if (form) { form.reset(); }
+        bind('changepw-title', forced ? 'Choose a new password' : 'Change password');
+        bind('changepw-lead', forced
+            ? 'Your account was set up with a temporary password. Choose a new one to continue.'
+            : 'Update the password for your account.');
+        q('[data-bind="changepw-close"]').hidden = !!forced;
+        m.hidden = false;
+    }
+    function closeChangePw() { if (!state.forcedPw) { region('changepw-modal').hidden = true; } }
+    async function submitChangePw(form) {
+        var err = q('[data-bind="changepw-err"]');
+        err.classList.remove('show');
+        var f = {}; new FormData(form).forEach(function (v, k) { f[k] = v; });
+        if (f.new_password !== f.confirm_password) { err.textContent = 'New passwords do not match.'; err.classList.add('show'); return; }
+        var r = await api('changeMyPassword', { current_password: f.current_password, new_password: f.new_password });
+        if (r && r.ok) {
+            state.forcedPw = false;
+            region('changepw-modal').hidden = true;
+            toast('Password updated', 'success');
+        } else {
+            err.textContent = (r && r.error) || 'Could not update password.'; err.classList.add('show');
+        }
     }
 
     async function refreshCounts() {
@@ -579,7 +611,11 @@
     // ── delegation ────────────────────────────────────────────────────────────
     document.addEventListener('click', function (e) {
         var m = e.target.classList && e.target.classList.contains('modal-overlay');
-        if (m) { e.target.hidden = true; return; }
+        if (m) {
+            // A forced password change must not be dismissable by clicking the backdrop.
+            if (e.target === region('changepw-modal') && state.forcedPw) { return; }
+            e.target.hidden = true; return;
+        }
         var t = e.target.closest('[data-action]'); if (!t) { return; }
         var a = t.getAttribute('data-action');
         if (a === 'switch-view') { switchView(t.getAttribute('data-view')); }
@@ -609,6 +645,8 @@
         else if (a === 'delete-rule') { deleteRule(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'run-backup') { runBackup(); }
         else if (a === 'reset-data') { resetData(); }
+        else if (a === 'open-change-pw') { openChangePw(false); }
+        else if (a === 'close-change-pw') { closeChangePw(); }
     });
     document.addEventListener('change', function (e) {
         var a = e.target.getAttribute && e.target.getAttribute('data-action'); if (!a) { return; }
@@ -619,7 +657,9 @@
         else if (a === 'upload-attachment') { upload(e.target); }
     });
     document.addEventListener('submit', function (e) {
-        if (e.target.getAttribute('data-action') === 'create-ticket') { e.preventDefault(); createTicket(e.target); }
+        var a = e.target.getAttribute('data-action');
+        if (a === 'create-ticket') { e.preventDefault(); createTicket(e.target); }
+        else if (a === 'change-pw') { e.preventDefault(); submitChangePw(e.target); }
     });
 
     boot();

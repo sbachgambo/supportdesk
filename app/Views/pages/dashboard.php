@@ -89,6 +89,9 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
             <div class="agent-name"><?= e($name) ?></div>
             <div class="agent-role"><?= e(ucfirst((string) $role)) ?></div>
           </div>
+          <button type="button" class="signout-btn" data-action="open-change-pw" title="Change password">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </button>
           <form method="post" action="<?= e(url('logout')) ?>" style="margin:0;">
             <?= csrf_field() ?>
             <button type="submit" class="signout-btn" title="Sign out">
@@ -165,6 +168,26 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
         <div class="field"><label>Description</label><textarea name="description" required rows="4" maxlength="5000"></textarea></div>
         <div class="alert error" data-bind="new-err"></div>
         <button type="submit" class="btn-submit">Create ticket</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<?php // ── change-password modal (also used to force a change when must_change_pw) ── ?>
+<div class="modal-overlay" data-region="changepw-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" data-bind="changepw-title">Change password</div>
+      <button type="button" class="modal-close" data-action="close-change-pw" data-bind="changepw-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="page-sub" data-bind="changepw-lead" style="margin-bottom:14px;">Update the password for your account.</p>
+      <form data-action="change-pw">
+        <div class="field"><label>Current password</label><input type="password" name="current_password" required autocomplete="current-password"></div>
+        <div class="field"><label>New password <span class="pub-opt">(min 12 characters)</span></label><input type="password" name="new_password" required minlength="12" autocomplete="new-password"></div>
+        <div class="field"><label>Confirm new password</label><input type="password" name="confirm_password" required minlength="12" autocomplete="new-password"></div>
+        <div class="alert error" data-bind="changepw-err"></div>
+        <button type="submit" class="btn-submit">Update password</button>
       </form>
     </div>
   </div>

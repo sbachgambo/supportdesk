@@ -100,9 +100,10 @@ $router->get('/mfa', static function (Request $request): Response {
     }
     return Response::html(View::render('mfa', [
         'title'      => 'Two-factor verification — P3A Support',
+        'company'    => \App\Models\AppConfig::get('company_name', 'SupportDesk'),
         'csrf'       => \App\Core\Csrf::token(),
         'pageScript' => 'mfa.js',
-    ], 'main'));
+    ], 'bare'));
 });
 
 // Dashboard (auth-gated). Full role-branched shell is Phase 4; this proves sessions.
