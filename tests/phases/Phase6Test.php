@@ -51,12 +51,17 @@ try {
 }
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
-$fix = sys_get_temp_dir() . '/p3a_fix_' . bin2hex(random_bytes(4));
+// Use a project-local scratch dir, not %TEMP%. On Windows, freshly GD-written files
+// in the system temp can be briefly locked by AV real-time scanning, making fopen/
+// file_get_contents fail with EINVAL even though the file exists. storage/cache is safe.
+$fix = str_replace('\\', '/', P3A_ROOT) . '/storage/cache/p3a_fix_' . bin2hex(random_bytes(4));
 mkdir($fix);
 $made = [];
+// A BLANK truecolor image (no fill) — still a valid JPEG/PNG for MIME/re-encode/polyglot
+// testing. On Windows, AV real-time scanning locks GD-written JPEGs that contain real
+// image DATA (fopen → EINVAL); a blank image sidesteps that entirely. (Linux is unaffected.)
 $mkImage = static function (string $path, string $type) {
     $img = imagecreatetruecolor(16, 16);
-    imagefilledrectangle($img, 0, 0, 15, 15, imagecolorallocate($img, 10, 120, 200));
     match ($type) { 'jpg' => imagejpeg($img, $path, 90), 'png' => imagepng($img, $path), default => null };
     imagedestroy($img);
 };

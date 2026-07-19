@@ -47,6 +47,7 @@ final class Dispatch
         'verifyMfa'    => 'auth',
         'disableTotp'  => 'auth',
         // Tickets (Phase 5) — staff only. Customer/owner read paths arrive in Phase 6.
+        'getDashboardData'    => 'agent',
         'createTicket'        => 'agent',
         'getTickets'          => 'agent',
         'getTicket'           => 'agent',
@@ -227,6 +228,7 @@ final class Dispatch
             'getMe'                => [$actions, 'getMe'],
             'getSystemConfig'      => [$actions, 'getSystemConfig'],
             // Tickets (Phase 5)
+            'getDashboardData'     => [$tickets, 'getDashboardData'],
             'createTicket'         => [$tickets, 'createTicket'],
             'getTickets'           => [$tickets, 'getTickets'],
             'getTicket'            => [$tickets, 'getTicket'],

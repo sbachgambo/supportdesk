@@ -44,6 +44,20 @@ final class TicketActions
         return ['ticket' => $result['ticket']];
     }
 
+    /** Staff dashboard KPI counts + active agents (for the assign dropdown). */
+    public function getDashboardData(array $payload, Request $request): array
+    {
+        return [
+            'kpis' => [
+                'open'         => Ticket::countByStatus('open'),
+                'pending'      => Ticket::countByStatus('pending'),
+                'resolved_24h' => Ticket::countResolvedLast24h(),
+                'breaches'     => Ticket::countActiveBreaches(),
+            ],
+            'agents' => User::activeAgents(),
+        ];
+    }
+
     public function getTickets(array $payload, Request $request): array
     {
         $page = max(1, (int) ($payload['page'] ?? 1));

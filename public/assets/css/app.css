@@ -126,3 +126,49 @@ button[type="submit"] {
 .p3a-rule-form fieldset { border: 1px solid var(--p3a-border); border-radius: .5rem; margin: 1rem 0; padding: .75rem; }
 .p3a-rule-form select, .p3a-rule-form input { padding: .4rem .5rem; margin: .2rem; border: 1px solid var(--p3a-border); border-radius: .375rem; background: var(--p3a-bg); color: var(--p3a-fg); }
 .p3a-rule-row { padding: .5rem .7rem; border-bottom: 1px solid var(--p3a-border); }
+
+/* ── ticket workbench ── */
+.p3a-dash-head { display: flex; justify-content: space-between; align-items: center; }
+.p3a-tabs { display: flex; gap: .4rem; margin: 1rem 0 .5rem; flex-wrap: wrap; }
+.p3a-tabs button { background: var(--p3a-surface); }
+.p3a-tabs button.is-active { background: var(--p3a-accent); color: var(--p3a-accent-fg); border-color: transparent; }
+.p3a-queue { width: 100%; border-collapse: collapse; background: var(--p3a-surface); border: 1px solid var(--p3a-border); border-radius: .5rem; overflow: hidden; }
+.p3a-queue th, .p3a-queue td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--p3a-border); font-size: .9rem; }
+.p3a-queue th { color: var(--p3a-muted); text-transform: uppercase; font-size: .72rem; letter-spacing: .03em; }
+.p3a-queue tbody tr[data-action] { cursor: pointer; }
+.p3a-queue tbody tr:hover { background: var(--p3a-bg); }
+.p3a-queue tr.is-breached td:first-child { box-shadow: inset 3px 0 0 var(--p3a-danger); }
+.p3a-mono { font-family: ui-monospace, monospace; white-space: nowrap; }
+.p3a-dim { color: var(--p3a-muted); white-space: nowrap; }
+.p3a-pager { display: flex; gap: .75rem; align-items: center; margin: .8rem 0; color: var(--p3a-muted); }
+.p3a-pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; text-transform: capitalize; }
+.p3a-prio-urgent { background: #fee4e2; color: #b42318; } .p3a-prio-high { background: #fef0c7; color: #b54708; }
+.p3a-prio-normal { background: #eff4ff; color: #3538cd; } .p3a-prio-low { background: #ecfdf3; color: #027a48; }
+.p3a-status-open { background: #eff4ff; color: #3538cd; } .p3a-status-pending { background: #fef0c7; color: #b54708; }
+.p3a-status-resolved { background: #ecfdf3; color: #027a48; } .p3a-status-closed { background: #f2f4f7; color: #475467; }
+
+/* Only display when NOT [hidden] — otherwise an author `display:flex` would override
+   the browser's [hidden]{display:none} and the modal could never be hidden. */
+.p3a-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 50; overflow-y: auto; }
+.p3a-modal:not([hidden]) { display: flex; }
+.p3a-modal-box { background: var(--p3a-surface); border-radius: .75rem; width: 100%; max-width: 32rem; padding: 1.25rem; }
+.p3a-modal-wide { max-width: 46rem; }
+.p3a-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+.p3a-close { background: transparent; border: 0; font-size: 1.5rem; line-height: 1; color: var(--p3a-muted); }
+.p3a-detail-meta { display: flex; flex-wrap: wrap; gap: 1rem; padding: .5rem 0 1rem; border-bottom: 1px solid var(--p3a-border); }
+.p3a-detail-meta select { padding: .3rem .4rem; border: 1px solid var(--p3a-border); border-radius: .375rem; background: var(--p3a-bg); color: var(--p3a-fg); }
+.p3a-lbl { display: block; color: var(--p3a-muted); font-size: .72rem; text-transform: uppercase; }
+.p3a-sla { color: var(--p3a-muted); font-size: .8rem; align-self: center; }
+.p3a-thread { max-height: 40vh; overflow-y: auto; padding: 1rem 0; display: flex; flex-direction: column; gap: .6rem; }
+.p3a-msg { padding: .55rem .75rem; border-radius: .5rem; background: var(--p3a-bg); border: 1px solid var(--p3a-border); }
+.p3a-msg-agent { background: var(--p3a-ok-bg); }
+.p3a-msg.is-internal { background: #fffbeb; border-color: #fde68a; }
+.p3a-msg-who { font-size: .72rem; color: var(--p3a-muted); margin-bottom: .2rem; }
+.p3a-msg-body { white-space: pre-wrap; }
+.p3a-attach-link { display: inline-block; margin: .2rem 0; }
+.p3a-composer { border-top: 1px solid var(--p3a-border); padding-top: .75rem; }
+.p3a-composer-tools { display: flex; gap: .6rem; align-items: center; margin-bottom: .5rem; flex-wrap: wrap; }
+.p3a-composer textarea, .p3a-newticket textarea, .p3a-newticket input, .p3a-newticket select { width: 100%; padding: .5rem .6rem; border: 1px solid var(--p3a-border); border-radius: .375rem; background: var(--p3a-bg); color: var(--p3a-fg); font: inherit; }
+.p3a-composer-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+.p3a-note-btn { background: var(--p3a-surface); color: var(--p3a-fg); }
+.p3a-newticket label { display: block; margin: .5rem 0 .2rem; font-weight: 600; font-size: .85rem; }

@@ -167,6 +167,18 @@ T::ok($gwTid !== '', 'gateway returns the new ticket id');
 T::eq(200, $st, 'getTicket via gateway → 200');
 T::ok(isset($body['data']['messages']), 'getTicket returns messages (via MessageVisibility)');
 
+// getTickets paged queue — exercises Ticket::paged (repeated-named-param safe under
+// EMULATE_PREPARES=false). Regression guard: this path was unhit before the workbench.
+[$st, $body] = $call('getTickets', ['page' => 1, 'status' => '']);
+T::eq(200, $st, 'getTickets (unfiltered) → 200');
+T::ok(($body['data']['total'] ?? -1) >= 1 && isset($body['data']['rows']), 'getTickets returns a paged queue');
+[$st, $body] = $call('getTickets', ['page' => 1, 'status' => 'open']);
+T::eq(200, $st, 'getTickets (status filter) → 200');
+T::ok(isset($body['data']['total']), 'filtered getTickets returns a total');
+[$st, $body] = $call('getDashboardData', []);
+T::eq(200, $st, 'getDashboardData → 200');
+T::ok(isset($body['data']['kpis']['open']), 'dashboard KPIs returned');
+
 // validation error → 422 with a safe message
 [$st, $body] = $call('createTicket', ['subject' => '', 'description' => 'x', 'customer_email' => 'bad']);
 T::eq(422, $st, 'invalid createTicket → 422 (ValidationException)');

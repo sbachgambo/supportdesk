@@ -124,7 +124,8 @@ T::ok(!Csrf::validatePublic(base64_encode((time() - 10) . '|deadbeef'), 'submit'
 
 // ── A05/RCE Uploads ──────────────────────────────────────────────────────────
 T::suite('SecuritySuite: uploads (§10.7)');
-$fix = sys_get_temp_dir() . '/p3a_sec_' . bin2hex(random_bytes(3));
+// Project-local scratch dir (not %TEMP%) — see the note in Phase6Test re: Windows AV.
+$fix = str_replace('\\', '/', P3A_ROOT) . '/storage/cache/p3a_sec_' . bin2hex(random_bytes(3));
 mkdir($fix);
 $img = imagecreatetruecolor(8, 8);
 imagejpeg($img, "$fix/ok.jpg");

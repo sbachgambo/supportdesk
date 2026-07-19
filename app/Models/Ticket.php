@@ -49,19 +49,24 @@ final class Ticket
      */
     public static function paged(array $filters, int $page, int $perPage = 10): array
     {
+        $status = (string) ($filters['status'] ?? '');
+        $assignee = (string) ($filters['assigned_to'] ?? '');
+        $cemail = (string) ($filters['customer_email'] ?? '');
+        // DISTINCT names per occurrence: with EMULATE_PREPARES=false a named placeholder
+        // may NOT be reused within one statement, so the sentinel needs two names each.
         $params = [
-            ':f_status'   => (string) ($filters['status'] ?? ''),
-            ':f_assignee' => (string) ($filters['assigned_to'] ?? ''),
-            ':f_cemail'   => (string) ($filters['customer_email'] ?? ''),
+            ':status_a' => $status, ':status_b' => $status,
+            ':assignee_a' => $assignee, ':assignee_b' => $assignee,
+            ':cemail_a' => $cemail, ':cemail_b' => $cemail,
         ];
 
         // WHERE inlined literally in both queries (no interpolation, §10.1). An empty
         // sentinel disables that filter. Keep the two WHERE blocks identical.
         $total = (int) Db::scalar(
             "SELECT COUNT(*) FROM tickets
-             WHERE (:f_status = '' OR status = :f_status)
-               AND (:f_assignee = '' OR assigned_to = :f_assignee)
-               AND (:f_cemail = '' OR customer_email = :f_cemail)",
+             WHERE (:status_a = '' OR status = :status_b)
+               AND (:assignee_a = '' OR assigned_to = :assignee_b)
+               AND (:cemail_a = '' OR customer_email = :cemail_b)",
             $params
         );
 
@@ -72,9 +77,9 @@ final class Ticket
                     assigned_to, category_id, created_at, updated_at,
                     sla_response_status, sla_resolution_status, first_response_at, resolved_at
              FROM tickets
-             WHERE (:f_status = '' OR status = :f_status)
-               AND (:f_assignee = '' OR assigned_to = :f_assignee)
-               AND (:f_cemail = '' OR customer_email = :f_cemail)
+             WHERE (:status_a = '' OR status = :status_b)
+               AND (:assignee_a = '' OR assigned_to = :assignee_b)
+               AND (:cemail_a = '' OR customer_email = :cemail_b)
              ORDER BY updated_at DESC
              LIMIT :limit OFFSET :offset",
             $params
@@ -87,6 +92,23 @@ final class Ticket
     public static function countByStatus(string $status): int
     {
         return (int) Db::scalar('SELECT COUNT(*) FROM tickets WHERE status = :s', [':s' => $status]);
+    }
+
+    public static function countResolvedLast24h(): int
+    {
+        return (int) Db::scalar(
+            'SELECT COUNT(*) FROM tickets WHERE resolved_at IS NOT NULL AND resolved_at >= :s',
+            [':s' => gmdate('Y-m-d H:i:s', time() - 86400)]
+        );
+    }
+
+    public static function countActiveBreaches(): int
+    {
+        return (int) Db::scalar(
+            "SELECT COUNT(*) FROM tickets
+             WHERE (sla_response_status = 'breached' OR sla_resolution_status = 'breached')
+               AND status NOT IN ('resolved','closed')"
+        );
     }
 
     /**

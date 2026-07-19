@@ -114,11 +114,12 @@ $router->get('/dashboard', static function (Request $request): Response {
         return redirect('mfa'); // unverified sessions must clear MFA first (D8)
     }
     return Response::html(View::render('dashboard', [
-        'title'   => 'Dashboard — P3A Support',
-        'email'   => (string) Session::email(),
-        'role'    => (string) Session::role(),
-        'csrf'    => \App\Core\Csrf::token(),
-        'company' => \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'title'      => 'Dashboard — P3A Support',
+        'email'      => (string) Session::email(),
+        'role'       => (string) Session::role(),
+        'csrf'       => \App\Core\Csrf::token(),
+        'company'    => \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'pageScript' => 'dashboard.js',
     ], 'app'));
 });
 

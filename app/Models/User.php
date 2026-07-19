@@ -66,6 +66,14 @@ final class User
         return $row === null ? null : (string) $row['email'];
     }
 
+    /** Active agents + admins, for assignment dropdowns. */
+    public static function activeAgents(): array
+    {
+        return Db::queryAll(
+            "SELECT name, email FROM users WHERE active = 1 AND role IN ('agent','admin') ORDER BY name"
+        );
+    }
+
     public static function findActiveAgent(string $email): ?array
     {
         return Db::queryOne(
