@@ -54,6 +54,7 @@ final class TicketActions
                 'resolved_24h' => Ticket::countResolvedLast24h(),
                 'breaches'     => Ticket::countActiveBreaches(),
             ],
+            'avg_response_hours' => Ticket::avgFirstResponseHours(),
             'agents' => User::activeAgents(),
         ];
     }
@@ -67,6 +68,16 @@ final class TicketActions
         ];
         $result = Ticket::paged($filters, $page, 10);
         return ['rows' => $result['rows'], 'total' => $result['total'], 'page' => $page, 'per_page' => 10];
+    }
+
+    /** Sidebar views (prototype): all | mine | breaches | resolved. Client paginates 10/page. */
+    public function getTicketsForView(array $payload, Request $request): array
+    {
+        $view = (string) ($payload['view'] ?? 'all');
+        if (!in_array($view, ['all', 'mine', 'breaches', 'resolved'], true)) {
+            $view = 'all';
+        }
+        return ['view' => $view, 'tickets' => Ticket::allForView($view, (string) Session::email())];
     }
 
     public function getTicket(array $payload, Request $request): array

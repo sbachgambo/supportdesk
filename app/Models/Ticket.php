@@ -94,12 +94,60 @@ final class Ticket
         return (int) Db::scalar('SELECT COUNT(*) FROM tickets WHERE status = :s', [':s' => $status]);
     }
 
+    /**
+     * All tickets for a sidebar view (prototype semantics), newest first, capped.
+     * view: 'all' | 'mine' | 'breaches' | 'resolved'. Each query uses distinct params.
+     */
+    public static function allForView(string $view, string $agentEmail): array
+    {
+        // Columns inlined literally per query (no interpolation into SQL, §10.1).
+        return match ($view) {
+            'mine' => Db::queryAll(
+                "SELECT ticket_id, subject, customer_name, customer_email, priority, status,
+                        assigned_to, category_id, created_at, updated_at,
+                        sla_response_status, sla_resolution_status, first_response_at, resolved_at
+                 FROM tickets WHERE assigned_to = :email ORDER BY updated_at DESC LIMIT 1000",
+                [':email' => $agentEmail]
+            ),
+            'breaches' => Db::queryAll(
+                "SELECT ticket_id, subject, customer_name, customer_email, priority, status,
+                        assigned_to, category_id, created_at, updated_at,
+                        sla_response_status, sla_resolution_status, first_response_at, resolved_at
+                 FROM tickets
+                 WHERE (sla_response_status = 'breached' OR sla_resolution_status = 'breached')
+                   AND status IN ('open','pending') ORDER BY updated_at DESC LIMIT 1000"
+            ),
+            'resolved' => Db::queryAll(
+                "SELECT ticket_id, subject, customer_name, customer_email, priority, status,
+                        assigned_to, category_id, created_at, updated_at,
+                        sla_response_status, sla_resolution_status, first_response_at, resolved_at
+                 FROM tickets WHERE status IN ('resolved','closed') ORDER BY updated_at DESC LIMIT 1000"
+            ),
+            default => Db::queryAll(
+                "SELECT ticket_id, subject, customer_name, customer_email, priority, status,
+                        assigned_to, category_id, created_at, updated_at,
+                        sla_response_status, sla_resolution_status, first_response_at, resolved_at
+                 FROM tickets ORDER BY updated_at DESC LIMIT 1000"
+            ),
+        };
+    }
+
     public static function countResolvedLast24h(): int
     {
         return (int) Db::scalar(
             'SELECT COUNT(*) FROM tickets WHERE resolved_at IS NOT NULL AND resolved_at >= :s',
             [':s' => gmdate('Y-m-d H:i:s', time() - 86400)]
         );
+    }
+
+    /** Average first-response time in hours across responded tickets (dashboard stat). */
+    public static function avgFirstResponseHours(): ?float
+    {
+        $v = Db::scalar(
+            'SELECT AVG(TIMESTAMPDIFF(MINUTE, created_at, first_response_at)) / 60
+             FROM tickets WHERE first_response_at IS NOT NULL'
+        );
+        return $v === null ? null : round((float) $v, 1);
     }
 
     public static function countActiveBreaches(): int

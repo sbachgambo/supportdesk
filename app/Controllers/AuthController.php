@@ -29,12 +29,14 @@ final class AuthController
         if (Session::current() !== null) {
             return redirect('dashboard');
         }
+        $company = \App\Models\AppConfig::get('company_name', 'SupportDesk');
         return Response::html(View::render('auth/login', [
-            'title' => 'Sign in — P3A Support',
-            'csrf'  => Csrf::publicToken('login'),
-            'error' => null,
-            'email' => '',
-        ]));
+            'title'   => 'Sign in — ' . $company,
+            'csrf'    => Csrf::publicToken('login'),
+            'error'   => null,
+            'email'   => '',
+            'company' => $company,
+        ], 'bare'));
     }
 
     public function login(Request $request): Response
@@ -143,12 +145,14 @@ final class AuthController
     // ── helpers ──────────────────────────────────────────────────────────────
     private function loginError(Request $request, string $message): Response
     {
+        $company = \App\Models\AppConfig::get('company_name', 'SupportDesk');
         return Response::html(View::render('auth/login', [
-            'title' => 'Sign in — P3A Support',
-            'csrf'  => Csrf::publicToken('login'),
-            'error' => $message,
-            'email' => $request->str('email'),
-        ]), 401);
+            'title'   => 'Sign in — ' . $company,
+            'csrf'    => Csrf::publicToken('login'),
+            'error'   => $message,
+            'email'   => $request->str('email'),
+            'company' => $company,
+        ], 'bare'), 401);
     }
 
     private function resetInvalid(): Response

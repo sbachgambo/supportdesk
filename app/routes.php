@@ -113,14 +113,17 @@ $router->get('/dashboard', static function (Request $request): Response {
     if (!Session::isMfaVerified()) {
         return redirect('mfa'); // unverified sessions must clear MFA first (D8)
     }
+    $me = \App\Models\User::findById((int) Session::userId());
     return Response::html(View::render('dashboard', [
-        'title'      => 'Dashboard — P3A Support',
+        'title'      => \App\Models\AppConfig::get('company_name', 'SupportDesk'),
         'email'      => (string) Session::email(),
+        'name'       => (string) ($me['name'] ?? Session::email()),
         'role'       => (string) Session::role(),
+        'isAdmin'    => Session::role() === 'admin',
         'csrf'       => \App\Core\Csrf::token(),
-        'company'    => \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'company'    => \App\Models\AppConfig::get('company_name', 'SupportDesk'),
         'pageScript' => 'dashboard.js',
-    ], 'app'));
+    ], 'bare'));
 });
 
 // ── Public surfaces (§9, Phase 9) ──
