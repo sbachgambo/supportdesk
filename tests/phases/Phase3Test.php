@@ -185,6 +185,14 @@ PasswordReset::request('nobody-unknown@example.com', $IP);
 $after = (int) Db::scalar('SELECT COUNT(*) FROM password_resets');
 T::eq($before, $after, 'request for unknown email creates NO token row');
 
+// an ACTIVE, non-suppressed user actually gets the reset-link email (Mailer pretend → 'sent')
+$mailBefore = (int) Db::scalar("SELECT COUNT(*) FROM mail_log WHERE subject = 'Reset your password'");
+PasswordReset::request('admin@p3a-support.com.ng', $IP);
+$mailAfter = (int) Db::scalar("SELECT COUNT(*) FROM mail_log WHERE subject = 'Reset your password'");
+T::eq($mailBefore + 1, $mailAfter, 'reset request dispatches the reset-link email (mail_log records it)');
+$sentRow = Db::queryOne("SELECT status FROM mail_log WHERE subject = 'Reset your password' ORDER BY id DESC LIMIT 1");
+T::eq('sent', (string) ($sentRow['status'] ?? ''), 'reset email sent (pretend=sent under APP_ENV=testing)');
+
 // completing a reset kills all the user's sessions
 $ru = (int) User::findByEmail($resetEmail)['id'];
 Db::query('DELETE FROM sessions');

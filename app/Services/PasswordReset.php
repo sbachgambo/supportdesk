@@ -50,10 +50,32 @@ final class PasswordReset
             $raw = self::createToken($email, (string) $user['name']);
             Logger::security('pwreset_requested', "email={$email}");
             Audit::log($email, 'pwreset_requested', $email, '', $ip);
-            // TODO(Phase 10): email the link  url('reset?token='.$raw)  to $email.
+            self::sendResetEmail($email, (string) $user['name'], $raw);
             unset($raw);
         }
         // else: create no row, log nothing that distinguishes existence.
+    }
+
+    /** Email the (absolute, single-use, 60-min) reset link. Mailer handles suppression/pretend. */
+    private static function sendResetEmail(string $email, string $name, string $rawToken): void
+    {
+        $link = \url('reset?token=' . $rawToken);
+        $safeName = self::h($name !== '' ? $name : 'there');
+        $safeLink = self::h($link);
+        $body = "<p>Hi {$safeName},</p>"
+            . '<p>We received a request to reset your password. Use the button below to choose a new one. '
+            . 'This link expires in 60 minutes and can be used once.</p>'
+            . "<p><a href=\"{$safeLink}\" style=\"display:inline-block;background:#4057F5;color:#fff;"
+            . "text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700\">Reset your password</a></p>"
+            . "<p style=\"color:#6b7280;font-size:13px\">If you didn't request this, you can safely ignore this "
+            . 'email — your password will not change.</p>'
+            . "<p style=\"color:#6b7280;font-size:12px;word-break:break-all\">{$safeLink}</p>";
+        Mailer::sendTemplate($email, 'Reset your password', 'Password reset', $body);
+    }
+
+    private static function h(string $v): string
+    {
+        return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
     }
 
     /** Insert a reset row and return the RAW token (goes only into the email/link). */
@@ -124,7 +146,13 @@ final class PasswordReset
         Session::terminateAllForUser((int) $user['id']);
         Logger::security('pwreset_completed', "email={$email}");
         Audit::log($email, 'pwreset_completed', $email, '', $ip);
-        // TODO(Phase 10): email the owner "your password was changed".
+
+        // Notify the owner that their password changed (security signal).
+        $safeName = self::h((string) $user['name'] !== '' ? (string) $user['name'] : 'there');
+        Mailer::sendTemplate($email, 'Your password was changed', 'Password changed',
+            "<p>Hi {$safeName},</p>"
+            . '<p>Your password was just changed and all other sessions were signed out.</p>'
+            . "<p style=\"color:#6b7280;font-size:13px\">If this wasn't you, contact your administrator immediately.</p>");
         return null;
     }
 
