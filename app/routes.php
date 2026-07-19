@@ -129,21 +129,25 @@ $router->get('/dashboard', static function (Request $request): Response {
 // ── Public surfaces (§9, Phase 9) ──
 $router->get('/submit', static function (Request $request): Response {
     $widget = $request->query('widget') === '1';
+    $company = \App\Models\AppConfig::get('company_name', 'P3A Support');
     return Response::html(View::render('submit', [
-        'title'      => 'Submit a request — ' . \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'title'      => 'Submit a request — ' . $company,
+        'company'    => $company,
         'csrf'       => \App\Core\Csrf::publicToken('submitTicket'),
         'categories' => \App\Models\Category::allActive(),
         'widget'     => $widget,
         'pageScript' => 'public.js',
-    ], 'main'));
+    ], 'bare'));
 });
 
 $router->get('/status', static function (Request $request): Response {
+    $company = \App\Models\AppConfig::get('company_name', 'P3A Support');
     return Response::html(View::render('status', [
-        'title'      => 'Check ticket status — ' . \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'title'      => 'Check ticket status — ' . $company,
+        'company'    => $company,
         'csrf'       => \App\Core\Csrf::publicToken('checkTicketStatus'),
         'pageScript' => 'public.js',
-    ], 'main'));
+    ], 'bare'));
 });
 
 // Widget loader (§9, §10.12). Routed through index.php so it gets the 'widget' header

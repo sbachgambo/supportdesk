@@ -70,10 +70,11 @@ final class AuthController
     public function showForgot(Request $request): Response
     {
         return Response::html(View::render('auth/forgot', [
-            'title'  => 'Reset your password — P3A Support',
-            'csrf'   => Csrf::publicToken('forgot'),
-            'notice' => null,
-        ]));
+            'title'   => 'Reset your password — P3A Support',
+            'csrf'    => Csrf::publicToken('forgot'),
+            'company' => $this->company(),
+            'notice'  => null,
+        ], 'bare'));
     }
 
     public function forgot(Request $request): Response
@@ -83,10 +84,11 @@ final class AuthController
         }
         // Enumeration-safe: the same notice regardless of whether the email exists.
         return Response::html(View::render('auth/forgot', [
-            'title'  => 'Reset your password — P3A Support',
-            'csrf'   => Csrf::publicToken('forgot'),
-            'notice' => 'If that email belongs to an active account, a reset link is on its way.',
-        ]));
+            'title'   => 'Reset your password — P3A Support',
+            'csrf'    => Csrf::publicToken('forgot'),
+            'company' => $this->company(),
+            'notice'  => 'If that email belongs to an active account, a reset link is on its way.',
+        ], 'bare'));
     }
 
     /**
@@ -113,10 +115,11 @@ final class AuthController
             return $this->resetInvalid();
         }
         return Response::html(View::render('auth/reset', [
-            'title' => 'Choose a new password — P3A Support',
-            'csrf'  => Csrf::publicToken('reset'),
-            'error' => null,
-        ]));
+            'title'   => 'Choose a new password — P3A Support',
+            'csrf'    => Csrf::publicToken('reset'),
+            'company' => $this->company(),
+            'error'   => null,
+        ], 'bare'));
     }
 
     public function reset(Request $request): Response
@@ -130,16 +133,18 @@ final class AuthController
         $error = PasswordReset::complete($email, $password, $request->ip());
         if ($error !== null) {
             return Response::html(View::render('auth/reset', [
-                'title' => 'Choose a new password — P3A Support',
-                'csrf'  => Csrf::publicToken('reset'),
-                'error' => $error,
-            ]));
+                'title'   => 'Choose a new password — P3A Support',
+                'csrf'    => Csrf::publicToken('reset'),
+                'company' => $this->company(),
+                'error'   => $error,
+            ], 'bare'));
         }
 
         $this->clearResetCookie();
         return Response::html(View::render('auth/reset_done', [
-            'title' => 'Password updated — P3A Support',
-        ]));
+            'title'   => 'Password updated — P3A Support',
+            'company' => $this->company(),
+        ], 'bare'));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -158,8 +163,14 @@ final class AuthController
     private function resetInvalid(): Response
     {
         return Response::html(View::render('auth/reset_invalid', [
-            'title' => 'Reset link invalid — P3A Support',
-        ]), 400);
+            'title'   => 'Reset link invalid — P3A Support',
+            'company' => $this->company(),
+        ], 'bare'), 400);
+    }
+
+    private function company(): string
+    {
+        return \App\Models\AppConfig::get('company_name', 'SupportDesk');
     }
 
     private function setResetCookie(string $value): void

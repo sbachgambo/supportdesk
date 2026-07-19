@@ -156,6 +156,12 @@ final class TicketService
             $ticket['first_response_at'] = $fields['first_response_at'];
             $fields['sla_response_status'] = SlaCalculator::grade($ticket)['response'];
         }
+        // Prototype parity (§3): an agent reply on an OPEN ticket hands the ball back
+        // to the customer → pending. Other statuses (pending/resolved/closed) are left
+        // as-is; a customer reply is what reopens a resolved ticket (customerReply).
+        if ((string) $ticket['status'] === 'open') {
+            $fields['status'] = 'pending';
+        }
         Ticket::update($ticketId, $fields);
 
         Audit::log((string) $actor['email'], 'ticket_reply', $ticketId);

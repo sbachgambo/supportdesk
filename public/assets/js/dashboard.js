@@ -302,26 +302,48 @@
     function drawBar(key, dist) { var cv = q('[data-chart="' + key + '"]'); if (!cv) { return; } if (charts[key]) { charts[key].destroy(); } var t = theme(); charts[key] = new window.Chart(cv, { type: 'bar', data: { labels: Object.keys(dist), datasets: [{ data: Object.values(dist), backgroundColor: t.palette }] }, options: chartOpts(t) }); }
     function chartOpts(t) { return { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: t.text }, grid: { color: t.grid } }, y: { beginAtZero: true, ticks: { color: t.text, precision: 0 }, grid: { color: t.grid } } } }; }
 
-    // ── admin (basic: agents + SLA + config) ─────────────────────────────────
+    // ── admin (full: agents + categories + SLA + system + rules + backup) ─────
     var adminTab = 'agents';
     async function renderAdmin() {
         var c = region('content'); c.textContent = '';
         c.appendChild(header('Admin Panel', 'Manage your helpdesk', false));
         var tabs = el('div', 'tabs');
-        [['agents', 'Agents'], ['sla', 'SLA Targets'], ['config', 'System']].forEach(function (pair) {
+        [['agents', 'Agents'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']].forEach(function (pair) {
             var t = el('div', 'tab' + (pair[0] === adminTab ? ' active' : ''), pair[1]); t.setAttribute('data-action', 'admin-tab'); t.setAttribute('data-tab', pair[0]); tabs.appendChild(t);
         });
         c.appendChild(tabs);
         var body = el('div'); body.setAttribute('data-region', 'admin-body'); c.appendChild(body);
         if (adminTab === 'agents') { renderAgents(body); }
+        else if (adminTab === 'categories') { renderCategories(body); }
         else if (adminTab === 'sla') { renderSla(body); }
-        else { renderConfig(body); }
+        else if (adminTab === 'config') { renderConfig(body); }
+        else if (adminTab === 'rules') { renderRules(body); }
+        else { renderBackup(body); }
     }
+
+    function field(labelText, input) { var f = el('div', 'field'); f.appendChild(el('label', null, labelText)); f.appendChild(input); return f; }
+    function inp(attrs) { var i = document.createElement('input'); Object.keys(attrs || {}).forEach(function (k) { i.setAttribute(k, attrs[k]); }); return i; }
+    function sel(options, dataAttr, dataVal, current) { var s = document.createElement('select'); if (dataAttr) { s.setAttribute(dataAttr, dataVal); } options.forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if (o[0] === current) { op.selected = true; } s.appendChild(op); }); return s; }
+
+    // ── Agents: add + activate/deactivate + reset password + delete ───────────
     async function renderAgents(body) {
         var r = await api('listUsers', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+
+        var form = el('div', 'admin-form');
+        form.appendChild(el('div', 'admin-form-title', 'Add a team member'));
+        var row = el('div', 'admin-form-row');
+        row.appendChild(inp({ type: 'text', placeholder: 'Full name', 'data-newuser': 'name' }));
+        row.appendChild(inp({ type: 'email', placeholder: 'Email address', 'data-newuser': 'email' }));
+        row.appendChild(sel([['agent', 'Agent'], ['admin', 'Admin']], 'data-newuser', 'role', 'agent'));
+        row.appendChild(inp({ type: 'password', placeholder: 'Temp password', 'data-newuser': 'password', autocomplete: 'new-password' }));
+        var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-user'); row.appendChild(add);
+        form.appendChild(row);
+        form.appendChild(el('div', 'admin-form-hint', 'They will be required to change this password at first sign-in.'));
+        body.appendChild(form);
+
         var card = el('div', 'table-card');
         var table = el('table'); var thead = el('thead'); var htr = el('tr');
-        ['Name', 'Email', 'Role', 'Active', ''].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
+        ['Name', 'Email', 'Role', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
         var tb = el('tbody');
         r.data.users.forEach(function (u) {
             var tr = el('tr');
@@ -329,11 +351,189 @@
             tr.appendChild(el('td', null, u.email));
             var rc = el('td'); rc.appendChild(el('span', 'role-chip role-' + (u.role === 'admin' ? 'admin' : 'agent'), u.role)); tr.appendChild(rc);
             tr.appendChild(el('td', null, Number(u.active) ? 'Yes' : 'No'));
-            tr.appendChild(el('td', null, ''));
+            var ac = el('td', 'row-actions');
+            var tgl = el('button', 'btn-mini', Number(u.active) ? 'Deactivate' : 'Activate');
+            tgl.setAttribute('data-action', 'toggle-user'); tgl.setAttribute('data-id', u.id); tgl.setAttribute('data-active', Number(u.active) ? '1' : '0'); ac.appendChild(tgl);
+            var pw = el('button', 'btn-mini', 'Reset PW'); pw.setAttribute('data-action', 'reset-user-pw'); pw.setAttribute('data-id', u.id); pw.setAttribute('data-email', u.email); ac.appendChild(pw);
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-user'); del.setAttribute('data-id', u.id); del.setAttribute('data-email', u.email); ac.appendChild(del);
+            tr.appendChild(ac);
             tb.appendChild(tr);
         });
         table.appendChild(tb); card.appendChild(table); body.appendChild(card);
     }
+    async function addUser() {
+        var p = {}; qa('[data-newuser]').forEach(function (i) { p[i.getAttribute('data-newuser')] = i.value; });
+        var r = await api('createUser', p);
+        toast(r && r.ok ? 'Team member added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); refreshCounts(); }
+    }
+    async function toggleUser(id, isActive) {
+        var r = await api(isActive ? 'deactivateUser' : 'activateUser', { id: id });
+        toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function resetUserPw(id, email) {
+        var pw = window.prompt('New password for ' + email + ':');
+        if (pw == null) { return; }
+        var r = await api('adminResetPassword', { id: id, password: pw });
+        toast(r && r.ok ? 'Password reset' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+    }
+    async function deleteUser(id, email) {
+        if (!window.confirm('Delete ' + email + '? This cannot be undone.')) { return; }
+        var r = await api('deleteUser', { id: id });
+        toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+
+    // ── Categories: add + toggle active + delete ──────────────────────────────
+    async function renderCategories(body) {
+        var r = await api('listCategories', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        var cats = r.data.categories || [];
+        var tops = cats.filter(function (c) { return !c.parent_id; });
+
+        var form = el('div', 'admin-form');
+        form.appendChild(el('div', 'admin-form-title', 'Add a category'));
+        var row = el('div', 'admin-form-row');
+        row.appendChild(inp({ type: 'text', placeholder: 'Category name', 'data-newcat': 'name' }));
+        row.appendChild(inp({ type: 'color', value: '#4057F5', 'data-newcat': 'color' }));
+        var parentOpts = [['', 'Top level']].concat(tops.map(function (c) { return [c.category_id, c.name]; }));
+        row.appendChild(sel(parentOpts, 'data-newcat', 'parent_id', ''));
+        var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-category'); row.appendChild(add);
+        form.appendChild(row);
+        body.appendChild(form);
+
+        var card = el('div', 'table-card');
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        ['Name', 'Parent', 'Colour', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
+        var byId = {}; cats.forEach(function (c) { byId[c.category_id] = c; });
+        var tb = el('tbody');
+        cats.forEach(function (c) {
+            var tr = el('tr');
+            tr.appendChild(el('td', null, c.name));
+            tr.appendChild(el('td', null, c.parent_id && byId[c.parent_id] ? byId[c.parent_id].name : '—'));
+            var cc = el('td'); var sw = el('span', 'cat-swatch'); sw.style.background = c.color || '#4057F5'; cc.appendChild(sw); cc.appendChild(el('span', null, ' ' + (c.color || ''))); tr.appendChild(cc);
+            tr.appendChild(el('td', null, Number(c.active) ? 'Yes' : 'No'));
+            var ac = el('td', 'row-actions');
+            var tgl = el('button', 'btn-mini', Number(c.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-category'); tgl.setAttribute('data-id', c.category_id); tgl.setAttribute('data-active', Number(c.active) ? '1' : '0'); ac.appendChild(tgl);
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-category'); del.setAttribute('data-id', c.category_id); del.setAttribute('data-name', c.name); ac.appendChild(del);
+            tr.appendChild(ac);
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); card.appendChild(table); body.appendChild(card);
+    }
+    async function addCategory() {
+        var p = {}; qa('[data-newcat]').forEach(function (i) { p[i.getAttribute('data-newcat')] = i.value; });
+        var r = await api('createCategory', p);
+        toast(r && r.ok ? 'Category added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function toggleCategory(id, isActive) {
+        var r = await api('updateCategory', { category_id: id, active: isActive ? 0 : 1 });
+        toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function deleteCategory(id, name) {
+        if (!window.confirm('Delete category "' + name + '"?')) { return; }
+        var r = await api('deleteCategory', { category_id: id });
+        toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+
+    // ── Routing rules: add (one condition + one action) + toggle + delete ─────
+    async function renderRules(body) {
+        var r = await api('listRules', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        var rules = r.data.rules || [];
+
+        var form = el('div', 'admin-form');
+        form.appendChild(el('div', 'admin-form-title', 'Add a routing rule'));
+        form.appendChild(field('Rule name', inp({ type: 'text', placeholder: 'e.g. Urgent billing issues', 'data-newrule': 'name' })));
+        var cRow = el('div', 'admin-form-row');
+        cRow.appendChild(el('span', 'admin-form-lead', 'IF'));
+        cRow.appendChild(sel([['subject', 'Subject'], ['description', 'Description'], ['priority', 'Priority'], ['category', 'Category'], ['customer_email', 'Customer email'], ['channel', 'Channel'], ['tags', 'Tags']], 'data-newrule', 'c_field', 'subject'));
+        cRow.appendChild(sel([['contains', 'contains'], ['is', 'is'], ['starts_with', 'starts with'], ['not_contains', 'does not contain']], 'data-newrule', 'c_operator', 'contains'));
+        cRow.appendChild(inp({ type: 'text', placeholder: 'value', 'data-newrule': 'c_value' }));
+        form.appendChild(cRow);
+        var aRow = el('div', 'admin-form-row');
+        aRow.appendChild(el('span', 'admin-form-lead', 'THEN'));
+        aRow.appendChild(sel([['set_priority', 'Set priority'], ['set_category', 'Set category'], ['assign_agent', 'Assign agent'], ['add_tag', 'Add tag']], 'data-newrule', 'a_type', 'set_priority'));
+        aRow.appendChild(inp({ type: 'text', placeholder: 'value (e.g. urgent, CAT-001, agent email, tag)', 'data-newrule': 'a_value' }));
+        form.appendChild(aRow);
+        var add = el('button', 'btn-submit', 'Create rule'); add.setAttribute('data-action', 'add-rule'); add.style.marginTop = '12px'; form.appendChild(add);
+        body.appendChild(form);
+
+        var card = el('div', 'table-card');
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        ['Name', 'Conditions', 'Actions', 'Enabled', 'Manage'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
+        var tb = el('tbody');
+        rules.forEach(function (rl) {
+            var conds = safeParse(rl.conditions), acts = safeParse(rl.actions);
+            var tr = el('tr');
+            tr.appendChild(el('td', null, rl.name));
+            tr.appendChild(el('td', 'rule-summary', conds.map(function (c) { return c.field + ' ' + c.operator + ' "' + c.value + '"'; }).join(' AND ')));
+            tr.appendChild(el('td', 'rule-summary', acts.map(function (a) { return a.type + '=' + a.value; }).join(', ')));
+            tr.appendChild(el('td', null, Number(rl.enabled) ? 'Yes' : 'No'));
+            var ac = el('td', 'row-actions');
+            var tgl = el('button', 'btn-mini', Number(rl.enabled) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-rule'); tgl.setAttribute('data-id', rl.rule_id); tgl.setAttribute('data-enabled', Number(rl.enabled) ? '1' : '0'); ac.appendChild(tgl);
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-rule'); del.setAttribute('data-id', rl.rule_id); del.setAttribute('data-name', rl.name); ac.appendChild(del);
+            tr.appendChild(ac);
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); card.appendChild(table); body.appendChild(card);
+    }
+    function safeParse(s) { try { var v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+    function ruleVal(k) { var i = q('[data-newrule="' + k + '"]'); return i ? i.value : ''; }
+    async function addRule() {
+        var payload = {
+            name: ruleVal('name'), enabled: true,
+            conditions: [{ field: ruleVal('c_field'), operator: ruleVal('c_operator'), value: ruleVal('c_value') }],
+            actions: [{ type: ruleVal('a_type'), value: ruleVal('a_value') }]
+        };
+        var r = await api('createRule', payload);
+        toast(r && r.ok ? 'Rule created' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function toggleRule(id, isEnabled) {
+        var r = await api('toggleRule', { rule_id: id, enabled: isEnabled ? 0 : 1 });
+        toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function deleteRule(id, name) {
+        if (!window.confirm('Delete rule "' + name + '"?')) { return; }
+        var r = await api('deleteRule', { rule_id: id });
+        toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+
+    // ── Backup & data (run backup + danger zone reset) ────────────────────────
+    function renderBackup(body) {
+        var card = el('div', 'table-card'); var inner = el('div'); inner.style.padding = '20px';
+        inner.appendChild(el('div', 'admin-form-title', 'Backup'));
+        inner.appendChild(el('p', 'admin-form-hint', 'Create an on-demand database backup. Backups are also produced automatically before any data reset.'));
+        var bk = el('button', 'btn-submit', 'Run backup now'); bk.setAttribute('data-action', 'run-backup'); inner.appendChild(bk);
+        card.appendChild(inner); body.appendChild(card);
+
+        var danger = el('div', 'danger-zone');
+        danger.appendChild(el('div', 'danger-title', 'Danger zone'));
+        danger.appendChild(el('p', 'admin-form-hint', 'Permanently delete ALL tickets, messages, attachments and notifications. Users, categories, config, canned responses, routing rules, KB and the audit log are preserved. A backup is taken first.'));
+        danger.appendChild(el('p', 'admin-form-hint', 'Type ' + '“' + 'RESET TICKET DATA' + '”' + ' to confirm:'));
+        var drow = el('div', 'admin-form-row');
+        drow.appendChild(inp({ type: 'text', placeholder: 'RESET TICKET DATA', 'data-reset': 'confirm' }));
+        var rb = el('button', 'btn-mini btn-danger', 'Reset ticket data'); rb.setAttribute('data-action', 'reset-data'); drow.appendChild(rb);
+        danger.appendChild(drow);
+        body.appendChild(danger);
+    }
+    async function runBackup() {
+        var r = await api('runBackup', {});
+        toast(r && r.ok ? ('Backup created: ' + r.data.file) : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+    }
+    async function resetData() {
+        var i = q('[data-reset="confirm"]'); var phrase = i ? i.value : '';
+        if (!window.confirm('This deletes all ticket data. Continue?')) { return; }
+        var r = await api('resetTicketData', { confirm: phrase });
+        toast(r && r.ok ? ('Reset complete — ' + r.data.deleted.tickets + ' tickets removed') : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { refreshCounts(); }
+    }
+
     async function renderSla(body) {
         var r = await api('getSystemConfig', {}); var cfg = (r && r.ok) ? r.data.config : {};
         var card = el('div', 'table-card'); var inner = el('div'); inner.style.padding = '20px';
@@ -397,6 +597,18 @@
         else if (a === 'admin-tab') { adminTab = t.getAttribute('data-tab'); renderAdmin(); }
         else if (a === 'save-sla') { saveSla(); }
         else if (a === 'save-config') { saveConfig(); }
+        else if (a === 'add-user') { addUser(); }
+        else if (a === 'toggle-user') { toggleUser(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
+        else if (a === 'reset-user-pw') { resetUserPw(t.getAttribute('data-id'), t.getAttribute('data-email')); }
+        else if (a === 'delete-user') { deleteUser(t.getAttribute('data-id'), t.getAttribute('data-email')); }
+        else if (a === 'add-category') { addCategory(); }
+        else if (a === 'toggle-category') { toggleCategory(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
+        else if (a === 'delete-category') { deleteCategory(t.getAttribute('data-id'), t.getAttribute('data-name')); }
+        else if (a === 'add-rule') { addRule(); }
+        else if (a === 'toggle-rule') { toggleRule(t.getAttribute('data-id'), t.getAttribute('data-enabled') === '1'); }
+        else if (a === 'delete-rule') { deleteRule(t.getAttribute('data-id'), t.getAttribute('data-name')); }
+        else if (a === 'run-backup') { runBackup(); }
+        else if (a === 'reset-data') { resetData(); }
     });
     document.addEventListener('change', function (e) {
         var a = e.target.getAttribute && e.target.getAttribute('data-action'); if (!a) { return; }

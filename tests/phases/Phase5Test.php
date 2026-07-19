@@ -77,6 +77,7 @@ T::ok(Ticket::find($tid)['first_response_at'] === null, 'first_response_at null 
 TicketService::reply($tid, 'Thanks, we are looking into it.', $agent);
 $afterReply = Ticket::find($tid);
 T::ok($afterReply['first_response_at'] !== null, 'first_response_at stamped on first agent reply');
+T::eq('pending', $afterReply['status'], 'agent reply on an OPEN ticket moves it to pending (prototype parity)');
 $stamp = $afterReply['first_response_at'];
 TicketService::reply($tid, 'Any update on your side?', $agent);
 T::eq($stamp, Ticket::find($tid)['first_response_at'], 'second reply does NOT move first_response_at');
