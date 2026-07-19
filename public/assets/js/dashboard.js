@@ -29,7 +29,7 @@
     }
 
     // ── state ─────────────────────────────────────────────────────────────────
-    var state = { view: 'dashboard', ticket: null, agents: [], canned: [], page: {}, cache: {}, forcedPw: false };
+    var state = { view: 'dashboard', ticket: null, agents: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null };
 
     // ── boot ──────────────────────────────────────────────────────────────────
     async function boot() {
@@ -42,7 +42,10 @@
         switchView('dashboard');
         // Force a password change if the account was created/reset with a temp password.
         var me = await api('getMe');
-        if (me && me.ok && me.data && me.data.must_change_pw) { openChangePw(true); }
+        if (me && me.ok && me.data) {
+            state.me = me.data;
+            if (me.data.must_change_pw) { openChangePw(true); }
+        }
     }
 
     // ── change password (self-service + forced must_change_pw flow) ─────────────
@@ -280,19 +283,68 @@
     // ── knowledge base ────────────────────────────────────────────────────────
     async function renderKB() {
         var c = region('content'); c.textContent = '';
-        c.appendChild(header('Knowledge Base', 'Help articles for your team and customers', false));
+        var h = header('Knowledge Base', 'Help articles for your team and customers', false);
+        var nb = el('button', 'btn-new', '+ New article'); nb.setAttribute('data-action', 'new-kb'); h.appendChild(nb);
+        c.appendChild(h);
         var r = await api('getKbArticles', {});
-        var articles = r.ok ? r.data.articles : [];
+        var articles = (r && r.ok) ? r.data.articles : [];
         var grid = el('div', 'kb-grid');
-        if (!articles.length) { grid.appendChild(emptyState('No articles yet.')); }
+        if (!articles.length) { grid.appendChild(emptyState('No articles yet. Click “New article” to write your first one.')); }
         articles.forEach(function (a) {
-            var card = el('div', 'kb-card');
+            var card = el('div', 'kb-card'); card.setAttribute('data-action', 'open-kb'); card.setAttribute('data-id', a.article_id);
             var top = el('div', 'kb-card-cat'); top.appendChild(el('span', 'ticket-customer', a.category || 'General')); top.appendChild(el('span', 'vis-chip vis-' + a.visibility, a.visibility)); card.appendChild(top);
             card.appendChild(el('div', 'kb-card-title', a.title));
             var meta = el('div', 'kb-card-meta'); meta.appendChild(el('span', null, a.author)); meta.appendChild(el('span', null, a.view_count + ' views')); card.appendChild(meta);
             grid.appendChild(card);
         });
         c.appendChild(grid);
+    }
+    async function openKb(id) {
+        var r = await api('getKbArticle', { article_id: id });
+        if (!r || !r.ok) { toast('Could not load article', 'danger'); return; }
+        var a = r.data.article; state.kbCurrent = a;
+        bind('kb-modal-title', a.title);
+        var body = region('kb-modal-body'); body.textContent = '';
+        var top = el('div', 'kb-card-cat'); top.appendChild(el('span', 'ticket-customer', a.category || 'General')); top.appendChild(el('span', 'vis-chip vis-' + a.visibility, a.visibility)); body.appendChild(top);
+        body.appendChild(el('div', 'kb-body', a.body));
+        var meta = el('div', 'kb-card-meta'); meta.appendChild(el('span', null, 'By ' + a.author)); meta.appendChild(el('span', null, a.view_count + ' views')); body.appendChild(meta);
+        var actions = el('div', 'row-actions'); actions.style.marginTop = '16px';
+        var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-kb'); actions.appendChild(edit);
+        if (state.me && state.me.role === 'admin') {
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-kb'); del.setAttribute('data-id', a.article_id); del.setAttribute('data-title', a.title); actions.appendChild(del);
+        }
+        body.appendChild(actions);
+        region('kb-modal').hidden = false;
+    }
+    function kbEditor(a) {
+        state.kbEditId = a ? a.article_id : null;
+        bind('kb-modal-title', a ? 'Edit article' : 'New article');
+        var body = region('kb-modal-body'); body.textContent = '';
+        body.appendChild(field('Title', inp({ type: 'text', maxlength: '150', 'data-kb': 'title', value: a ? a.title : '' })));
+        body.appendChild(field('Category', inp({ type: 'text', maxlength: '60', placeholder: 'e.g. Billing', 'data-kb': 'category', value: a ? (a.category || '') : '' })));
+        body.appendChild(field('Visibility', sel([['internal', 'Internal — staff only'], ['public', 'Public — customers can see it']], 'data-kb', 'visibility', a ? a.visibility : 'internal')));
+        var ta = document.createElement('textarea'); ta.setAttribute('data-kb', 'body'); ta.rows = 8; ta.value = a ? a.body : '';
+        body.appendChild(field('Body', ta));
+        var err = el('div', 'alert error'); err.setAttribute('data-bind', 'kb-err'); body.appendChild(err);
+        var save = el('button', 'btn-submit', a ? 'Save changes' : 'Publish article'); save.setAttribute('data-action', 'save-kb'); body.appendChild(save);
+        region('kb-modal').hidden = false;
+    }
+    async function saveKb() {
+        var p = {}; qa('[data-kb]').forEach(function (i) { p[i.getAttribute('data-kb')] = i.value; });
+        var err = q('[data-bind="kb-err"]'); if (err) { err.classList.remove('show'); }
+        if (!p.title || !p.title.trim()) { if (err) { err.textContent = 'Title is required.'; err.classList.add('show'); } return; }
+        if (!p.body || !p.body.trim()) { if (err) { err.textContent = 'Body is required.'; err.classList.add('show'); } return; }
+        var editing = state.kbEditId;
+        if (editing) { p.article_id = editing; }
+        var r = await api(editing ? 'editKbArticle' : 'publishKbArticle', p);
+        if (r && r.ok) { region('kb-modal').hidden = true; toast(editing ? 'Article updated' : 'Article published', 'success'); renderKB(); }
+        else if (err) { err.textContent = (r && r.error) || 'Could not save the article.'; err.classList.add('show'); }
+    }
+    async function deleteKb(id, title) {
+        if (!window.confirm('Delete article “' + title + '”? This cannot be undone.')) { return; }
+        var r = await api('deleteKbArticle', { article_id: id });
+        if (r && r.ok) { region('kb-modal').hidden = true; toast('Article deleted', 'success'); renderKB(); }
+        else { toast((r && r.error) || 'Delete failed', 'danger'); }
     }
 
     // ── reports ───────────────────────────────────────────────────────────────
@@ -647,6 +699,12 @@
         else if (a === 'reset-data') { resetData(); }
         else if (a === 'open-change-pw') { openChangePw(false); }
         else if (a === 'close-change-pw') { closeChangePw(); }
+        else if (a === 'new-kb') { kbEditor(null); }
+        else if (a === 'open-kb') { openKb(t.getAttribute('data-id')); }
+        else if (a === 'edit-kb') { kbEditor(state.kbCurrent); }
+        else if (a === 'delete-kb') { deleteKb(t.getAttribute('data-id'), t.getAttribute('data-title')); }
+        else if (a === 'save-kb') { saveKb(); }
+        else if (a === 'close-kb') { region('kb-modal').hidden = true; }
     });
     document.addEventListener('change', function (e) {
         var a = e.target.getAttribute && e.target.getAttribute('data-action'); if (!a) { return; }

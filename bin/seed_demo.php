@@ -18,6 +18,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use App\Core\Config;
 use App\Core\Db;
+use App\Models\KbArticle;
 use App\Services\TicketService;
 
 if (Config::isProduction()) {
@@ -68,4 +69,19 @@ Db::query(
     [':d1' => $overdue, ':d2' => $overdue]
 );
 
-fwrite(STDOUT, "Seeded {$made} demo tickets into '" . Config::string('DB_NAME') . "'.\n");
+// A few starter knowledge-base articles (only if none exist yet).
+$kbMade = 0;
+if ((int) Db::scalar('SELECT COUNT(*) FROM knowledge_base') === 0) {
+    $articles = [
+        ['How to reset your password', "1. On the sign-in page, click \"Forgot password?\".\n2. Enter your account email.\n3. Open the reset link we email you (valid 60 minutes, single use).\n4. Choose a new password of at least 12 characters.\n\nIf the link says it expired, request a fresh one — each link can only be used once.", 'public', 'Account'],
+        ['Understanding ticket priorities', "Urgent — production is down or there's a security issue.\nHigh — significant impact, but a workaround exists.\nNormal — a standard request.\nLow — a question or minor cosmetic issue.\n\nSLA response and resolution timers are set from the priority at the moment a ticket is created, and recalculated if the priority changes.", 'public', 'Getting Started'],
+        ['Checking the status of your ticket', "Use the \"Check status\" page with your ticket ID (format TKT-YYYY-NNNN) and the email address you submitted with. You'll see the current status and the latest reply from our team. For your privacy, internal notes are never shown.", 'public', 'Getting Started'],
+        ['Escalation playbook (internal)', "For urgent tickets breaching SLA:\n1. Reassign to a senior agent.\n2. Add an internal note with the full context and what's been tried.\n3. Notify the duty admin.\n\nNever paste internal notes into a customer-facing reply.", 'internal', 'Operations'],
+    ];
+    foreach ($articles as [$title, $body, $vis, $cat]) {
+        KbArticle::create(['title' => $title, 'body' => $body, 'visibility' => $vis, 'category' => $cat, 'author' => $agent['email']]);
+        $kbMade++;
+    }
+}
+
+fwrite(STDOUT, "Seeded {$made} demo tickets and {$kbMade} KB articles into '" . Config::string('DB_NAME') . "'.\n");

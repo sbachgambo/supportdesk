@@ -162,8 +162,16 @@ Open any **open** demo ticket from All Tickets.
 
 ## 7. Knowledge Base
 
-- [ ] **Do:** sidebar **Knowledge Base**. **Expect:** a card grid of articles (or an empty state if none seeded).
-- [ ] **Do:** open an article. **Expect:** it renders; content shows as text (no broken markup).
+(The demo seed adds 4 starter articles; if you skipped `seed_demo.php` the grid
+starts empty and you create articles below.)
+
+- [ ] **Do:** sidebar **Knowledge Base**. **Expect:** a card grid of articles with category + a public/internal chip and view counts, and a **+ New article** button.
+- [ ] **Do:** click a card. **Expect:** a modal opens showing the full article body (view count ticks up), with an **Edit** button (and **Delete** if you're an admin).
+- [ ] **Do:** **+ New article** → fill title, category, pick **Internal**, write a body → **Publish article**. **Expect:** toast "Article published"; it appears in the grid with an "internal" chip.
+- [ ] **Do:** open that article → **Edit** → change the title → **Save changes**. **Expect:** toast "Article updated"; the grid shows the new title.
+- [ ] **Do:** create a **Public** article. Then, signed out, open `/status`… (public KB surfacing is via `getPublicKb`; the staff grid shows both, the public sees only public). **Expect:** internal articles never appear to the public.
+- [ ] **Do (admin):** open an article → **Delete** → confirm. **Expect:** toast "Article deleted"; it's gone from the grid.
+- [ ] **Do (as a non-admin agent):** open an article. **Expect:** **no Delete button** (delete is admin-only; the gateway also blocks it server-side).
 
 ---
 

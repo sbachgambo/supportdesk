@@ -392,3 +392,8 @@ tbody td { padding: 14px 20px; font-size: 13px; color: var(--ink); vertical-alig
 .mfa-secret { font-family: 'Space Grotesk', monospace; font-size: 15px; font-weight: 700; letter-spacing: 1px; text-align: center; word-break: break-all; background: var(--accent-dim); border: 1px dashed var(--accent); color: var(--accent); border-radius: 10px; padding: 12px 14px; margin-top: 8px; }
 .mfa-backup-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 4px; }
 .mfa-backup-list li { font-family: 'Space Grotesk', monospace; font-size: 14px; font-weight: 600; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+
+/* ── knowledge base: clickable cards + article viewer body ─────────────────── */
+.kb-card { cursor: pointer; }
+.kb-card:hover { border-color: var(--accent); }
+.kb-body { white-space: pre-wrap; line-height: 1.65; font-size: 14px; color: var(--ink); margin: 14px 0; max-height: 52vh; overflow: auto; }

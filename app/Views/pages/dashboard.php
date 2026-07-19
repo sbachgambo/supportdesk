@@ -173,6 +173,17 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
   </div>
 </div>
 
+<?php // ── knowledge-base modal (view / create / edit) ── ?>
+<div class="modal-overlay" data-region="kb-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" data-bind="kb-modal-title">Article</div>
+      <button type="button" class="modal-close" data-action="close-kb">&times;</button>
+    </div>
+    <div class="modal-body" data-region="kb-modal-body"></div>
+  </div>
+</div>
+
 <?php // ── change-password modal (also used to force a change when must_change_pw) ── ?>
 <div class="modal-overlay" data-region="changepw-modal" hidden>
   <div class="modal">
