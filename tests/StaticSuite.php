@@ -92,8 +92,10 @@ $scan = function (string $pattern, array $allow, string $label, string $why): vo
 
 T::suite('Static: security invariants (§10, §16)');
 
-// §10.1 — no PDO usage outside Core\Db
-$scan('/\bPDO\b/', ['Core/Db.php'], 'no PDO outside Core/Db.php',
+// §10.1 — no PDO usage outside Core\Db. BackupService is the documented exception:
+// dump/restore are DB-meta operations that need a raw connection (a scratch DB for
+// restore drills) outside the query abstraction — same rationale as Core\Db itself.
+$scan('/\bPDO\b/', ['Core/Db.php', 'Services/BackupService.php'], 'no PDO outside Core/Db.php (+BackupService)',
     'all DB access goes through Core\\Db (§10.1)');
 
 // §16 — superglobals only inside Core\Request
@@ -107,9 +109,11 @@ $scan('/\$_(GET|POST|FILES|COOKIE|REQUEST)\b/', ['Core/Request.php'],
 //   (b) a quoted SQL keyword string CONCATENATED with a variable
 //       e.g. "SELECT ... FROM " . $table
 $sqlKw = 'SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|JOIN';
+// (a) requires whitespace after the keyword — real SQL is "FROM table" / "WHERE col",
+// so this catches "... FROM $table" but not log text like "from={$var}" (from= has no space).
 $scan(
-    '/"[^"\n]*\b(' . $sqlKw . ')\b[^"\n]*\$\w+' .          // (a) interpolation in string
-    '|\b(' . $sqlKw . ')\b[^;\n]*["\']\s*\.\s*\$\w+/i',    // (b) concat with a var
+    '/"[^"\n]*\b(' . $sqlKw . ')\b\s[^"\n]*\$\w+' .        // (a) interpolation in a SQL string
+    '|\b(' . $sqlKw . ')\b\s[^;\n]*["\']\s*\.\s*\$\w+/i',  // (b) concat with a var
     ['Core/Db.php'],
     'no SQL string interpolation',
     'every query is a prepared statement with bound params (§10.1)');
