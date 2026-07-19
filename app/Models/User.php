@@ -73,4 +73,71 @@ final class User
             [':e' => $email]
         );
     }
+
+    // ── admin management (Phase 7) ───────────────────────────────────────────
+    /** Every user, without password hashes, for the admin list. */
+    public static function all(): array
+    {
+        return Db::queryAll(
+            'SELECT id, public_id, name, email, role, active, totp_enabled, must_change_pw, last_login_at, created_at
+             FROM users ORDER BY role, name'
+        );
+    }
+
+    public static function create(array $data): int
+    {
+        return (int) Db::insert('users', [
+            'public_id'      => $data['public_id'],
+            'name'           => $data['name'],
+            'email'          => strtolower(trim((string) $data['email'])),
+            'password_hash'  => $data['password_hash'],
+            'role'           => $data['role'],
+            'active'         => 1,
+            'must_change_pw' => !empty($data['must_change_pw']) ? 1 : 0,
+            'created_at'     => gmdate('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /** @param array<string,mixed> $fields (allowlisted by the caller) */
+    public static function update(int $id, array $fields): void
+    {
+        Db::update('users', $fields, 'id = :id', [':id' => $id]);
+    }
+
+    public static function setActive(int $id, bool $active): void
+    {
+        Db::update('users', ['active' => $active ? 1 : 0], 'id = :id', [':id' => $id]);
+    }
+
+    public static function setPasswordByAdmin(int $id, string $hash): void
+    {
+        Db::update('users', ['password_hash' => $hash, 'must_change_pw' => 1], 'id = :id', [':id' => $id]);
+    }
+
+    public static function delete(int $id): void
+    {
+        Db::delete('users', 'id = :id', [':id' => $id]);
+    }
+
+    /** Number of currently-active admins (last-admin guard). */
+    public static function activeAdminCount(): int
+    {
+        return (int) Db::scalar("SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1");
+    }
+
+    /** Next public id for a role: AD-/AG-/CU- prefix with a zero-padded sequence. */
+    public static function nextPublicId(string $role): string
+    {
+        $prefix = match ($role) {
+            'admin'    => 'AD',
+            'agent'    => 'AG',
+            default    => 'CU',
+        };
+        $max = Db::scalar(
+            "SELECT MAX(CAST(SUBSTRING_INDEX(public_id, :dash, -1) AS UNSIGNED))
+             FROM users WHERE public_id LIKE :like",
+            [':dash' => '-', ':like' => $prefix . '-%']
+        );
+        return sprintf('%s-%04d', $prefix, ((int) $max) + 1);
+    }
 }

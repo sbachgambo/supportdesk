@@ -60,6 +60,23 @@ final class Dispatch
         'createCategory'  => 'admin',
         'updateCategory'  => 'admin',
         'deleteCategory'  => 'admin',
+        // Admin panel (Phase 7).
+        'listUsers'          => 'admin',
+        'createUser'         => 'admin',
+        'updateUser'         => 'admin',
+        'deactivateUser'     => 'admin',
+        'activateUser'       => 'admin',
+        'deleteUser'         => 'admin',
+        'adminResetPassword' => 'admin',
+        'updateSlaTargets'   => 'admin',
+        'updateConfig'       => 'admin',
+        'runBackup'          => 'admin',
+        'resetTicketData'    => 'admin',
+        'listRules'          => 'admin',
+        'createRule'         => 'admin',
+        'updateRule'         => 'admin',
+        'toggleRule'         => 'admin',
+        'deleteRule'         => 'admin',
     ];
 
     private const GENERIC_ERROR = 'The request could not be completed.';
@@ -157,6 +174,8 @@ final class Dispatch
         $tickets = new \App\Controllers\TicketActions();
         $customer = new \App\Controllers\CustomerActions();
         $categories = new \App\Controllers\CategoryActions();
+        $admin = new \App\Controllers\AdminActions();
+        $rules = new \App\Controllers\RuleActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
@@ -185,6 +204,23 @@ final class Dispatch
             'createCategory'       => [$categories, 'createCategory'],
             'updateCategory'       => [$categories, 'updateCategory'],
             'deleteCategory'       => [$categories, 'deleteCategory'],
+            // Admin panel (Phase 7)
+            'listUsers'            => [$admin, 'listUsers'],
+            'createUser'           => [$admin, 'createUser'],
+            'updateUser'           => [$admin, 'updateUser'],
+            'deactivateUser'       => [$admin, 'deactivateUser'],
+            'activateUser'         => [$admin, 'activateUser'],
+            'deleteUser'           => [$admin, 'deleteUser'],
+            'adminResetPassword'   => [$admin, 'adminResetPassword'],
+            'updateSlaTargets'     => [$admin, 'updateSlaTargets'],
+            'updateConfig'         => [$admin, 'updateConfig'],
+            'runBackup'            => [$admin, 'runBackup'],
+            'resetTicketData'      => [$admin, 'resetTicketData'],
+            'listRules'            => [$rules, 'listRules'],
+            'createRule'           => [$rules, 'createRule'],
+            'updateRule'           => [$rules, 'updateRule'],
+            'toggleRule'           => [$rules, 'toggleRule'],
+            'deleteRule'           => [$rules, 'deleteRule'],
         ];
     }
 

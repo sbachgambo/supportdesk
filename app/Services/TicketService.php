@@ -66,13 +66,29 @@ final class TicketService
             return self::err('Tags are too long.');
         }
 
+        // Routing rules (§3): applied on non-agent channels; may override priority,
+        // category, tags, and assignment BEFORE SLA is computed (priority drives SLA).
+        $ruleAssignee = null;
+        if ($channel !== 'agent') {
+            $overrides = RoutingRules::apply([
+                'subject' => $subject, 'description' => $description, 'priority' => $priority,
+                'category_id' => $categoryId, 'customer_email' => $customerEmail,
+                'channel' => $channel, 'tags' => $tags,
+            ]);
+            $priority = $overrides['priority'] ?? $priority;
+            $categoryId = $overrides['category_id'] ?? $categoryId;
+            $tags = $overrides['tags'] ?? $tags;
+            $ruleAssignee = $overrides['assigned_to'] ?? null;
+        }
+
         $now = gmdate('Y-m-d H:i:s');
         $deadlines = SlaCalculator::deadlines($priority, $now);
 
-        // Auto-assign to the least-busy active agent unless the actor set an assignee.
-        $assignee = null;
+        // Assignment precedence: routing rule → explicit request → auto-assign least-busy.
         $requested = strtolower(trim((string) ($input['assigned_to'] ?? '')));
-        if ($requested !== '' && User::findActiveAgent($requested) !== null) {
+        if ($ruleAssignee !== null) {
+            $assignee = $ruleAssignee;
+        } elseif ($requested !== '' && User::findActiveAgent($requested) !== null) {
             $assignee = $requested;
         } else {
             $assignee = User::leastBusyAgentEmail();

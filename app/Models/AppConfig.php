@@ -27,6 +27,16 @@ final class AppConfig
         return $row === null ? $default : (string) $row['value'];
     }
 
+    /** Upsert a config value. Callers restrict which keys are writable (allowlist). */
+    public static function set(string $key, string $value): void
+    {
+        Db::query(
+            'INSERT INTO config (`key`, value) VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE value = :v2',
+            [':k' => $key, ':v' => $value, ':v2' => $value]
+        );
+    }
+
     /** @param array<string> $keys */
     public static function some(array $keys): array
     {

@@ -6,10 +6,12 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
+    'App\\Controllers\\AdminActions' => $baseDir . '/app/Controllers/AdminActions.php',
     'App\\Controllers\\ApiActions' => $baseDir . '/app/Controllers/ApiActions.php',
     'App\\Controllers\\AuthController' => $baseDir . '/app/Controllers/AuthController.php',
     'App\\Controllers\\CategoryActions' => $baseDir . '/app/Controllers/CategoryActions.php',
     'App\\Controllers\\CustomerActions' => $baseDir . '/app/Controllers/CustomerActions.php',
+    'App\\Controllers\\RuleActions' => $baseDir . '/app/Controllers/RuleActions.php',
     'App\\Controllers\\TicketActions' => $baseDir . '/app/Controllers/TicketActions.php',
     'App\\Controllers\\UploadController' => $baseDir . '/app/Controllers/UploadController.php',
     'App\\Core\\Config' => $baseDir . '/app/Core/Config.php',
@@ -31,6 +33,7 @@ return array(
     'App\\Models\\CannedResponse' => $baseDir . '/app/Models/CannedResponse.php',
     'App\\Models\\Category' => $baseDir . '/app/Models/Category.php',
     'App\\Models\\Message' => $baseDir . '/app/Models/Message.php',
+    'App\\Models\\RoutingRule' => $baseDir . '/app/Models/RoutingRule.php',
     'App\\Models\\Ticket' => $baseDir . '/app/Models/Ticket.php',
     'App\\Models\\User' => $baseDir . '/app/Models/User.php',
     'App\\Security\\Audit' => $baseDir . '/app/Security/Audit.php',
@@ -40,8 +43,11 @@ return array(
     'App\\Security\\RateLimit' => $baseDir . '/app/Security/RateLimit.php',
     'App\\Security\\Rbac' => $baseDir . '/app/Security/Rbac.php',
     'App\\Security\\Upload' => $baseDir . '/app/Security/Upload.php',
+    'App\\Services\\BackupService' => $baseDir . '/app/Services/BackupService.php',
     'App\\Services\\NotificationService' => $baseDir . '/app/Services/NotificationService.php',
     'App\\Services\\PasswordReset' => $baseDir . '/app/Services/PasswordReset.php',
+    'App\\Services\\ResetService' => $baseDir . '/app/Services/ResetService.php',
+    'App\\Services\\RoutingRules' => $baseDir . '/app/Services/RoutingRules.php',
     'App\\Services\\SlaCalculator' => $baseDir . '/app/Services/SlaCalculator.php',
     'App\\Services\\TicketService' => $baseDir . '/app/Services/TicketService.php',
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',

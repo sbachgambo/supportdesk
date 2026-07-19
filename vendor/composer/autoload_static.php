@@ -33,10 +33,12 @@ class ComposerStaticInit312e6071943076b7e37df53b1d340338
     );
 
     public static $classMap = array (
+        'App\\Controllers\\AdminActions' => __DIR__ . '/../..' . '/app/Controllers/AdminActions.php',
         'App\\Controllers\\ApiActions' => __DIR__ . '/../..' . '/app/Controllers/ApiActions.php',
         'App\\Controllers\\AuthController' => __DIR__ . '/../..' . '/app/Controllers/AuthController.php',
         'App\\Controllers\\CategoryActions' => __DIR__ . '/../..' . '/app/Controllers/CategoryActions.php',
         'App\\Controllers\\CustomerActions' => __DIR__ . '/../..' . '/app/Controllers/CustomerActions.php',
+        'App\\Controllers\\RuleActions' => __DIR__ . '/../..' . '/app/Controllers/RuleActions.php',
         'App\\Controllers\\TicketActions' => __DIR__ . '/../..' . '/app/Controllers/TicketActions.php',
         'App\\Controllers\\UploadController' => __DIR__ . '/../..' . '/app/Controllers/UploadController.php',
         'App\\Core\\Config' => __DIR__ . '/../..' . '/app/Core/Config.php',
@@ -58,6 +60,7 @@ class ComposerStaticInit312e6071943076b7e37df53b1d340338
         'App\\Models\\CannedResponse' => __DIR__ . '/../..' . '/app/Models/CannedResponse.php',
         'App\\Models\\Category' => __DIR__ . '/../..' . '/app/Models/Category.php',
         'App\\Models\\Message' => __DIR__ . '/../..' . '/app/Models/Message.php',
+        'App\\Models\\RoutingRule' => __DIR__ . '/../..' . '/app/Models/RoutingRule.php',
         'App\\Models\\Ticket' => __DIR__ . '/../..' . '/app/Models/Ticket.php',
         'App\\Models\\User' => __DIR__ . '/../..' . '/app/Models/User.php',
         'App\\Security\\Audit' => __DIR__ . '/../..' . '/app/Security/Audit.php',
@@ -67,8 +70,11 @@ class ComposerStaticInit312e6071943076b7e37df53b1d340338
         'App\\Security\\RateLimit' => __DIR__ . '/../..' . '/app/Security/RateLimit.php',
         'App\\Security\\Rbac' => __DIR__ . '/../..' . '/app/Security/Rbac.php',
         'App\\Security\\Upload' => __DIR__ . '/../..' . '/app/Security/Upload.php',
+        'App\\Services\\BackupService' => __DIR__ . '/../..' . '/app/Services/BackupService.php',
         'App\\Services\\NotificationService' => __DIR__ . '/../..' . '/app/Services/NotificationService.php',
         'App\\Services\\PasswordReset' => __DIR__ . '/../..' . '/app/Services/PasswordReset.php',
+        'App\\Services\\ResetService' => __DIR__ . '/../..' . '/app/Services/ResetService.php',
+        'App\\Services\\RoutingRules' => __DIR__ . '/../..' . '/app/Services/RoutingRules.php',
         'App\\Services\\SlaCalculator' => __DIR__ . '/../..' . '/app/Services/SlaCalculator.php',
         'App\\Services\\TicketService' => __DIR__ . '/../..' . '/app/Services/TicketService.php',
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
