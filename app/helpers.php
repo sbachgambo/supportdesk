@@ -44,12 +44,22 @@ if (!function_exists('asset')) {
      * ROOT-RELATIVE URL to a file under public/assets. Relative (not absolute) so
      * asset references are unambiguously same-origin — keeping the strict CSP and
      * the "no off-origin resources" guarantee simple. Honours an APP_URL subpath.
+     *
+     * Appends a ?v=<filemtime> cache-buster so the browser always fetches the current
+     * version — no stale CSS/JS after an edit (and cache busts automatically on deploy).
      */
     function asset(string $path): string
     {
+        $rel = ltrim($path, '/');
         $base = parse_url(Config::string('APP_URL'), PHP_URL_PATH);
         $base = is_string($base) ? rtrim($base, '/') : '';
-        return $base . '/assets/' . ltrim($path, '/');
+        $url = $base . '/assets/' . $rel;
+
+        $file = (defined('P3A_ROOT') ? P3A_ROOT : dirname(__DIR__)) . '/public/assets/' . $rel;
+        if (is_file($file)) {
+            $url .= '?v=' . filemtime($file);
+        }
+        return $url;
     }
 }
 
