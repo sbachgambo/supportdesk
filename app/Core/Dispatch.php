@@ -37,6 +37,19 @@ final class Dispatch
     public const REQUIRES = [
         'getMe'           => 'auth',
         'getSystemConfig' => 'admin',
+        // Tickets (Phase 5) — staff only. Customer/owner read paths arrive in Phase 6.
+        'createTicket'        => 'agent',
+        'getTickets'          => 'agent',
+        'getTicket'           => 'agent',
+        'sendReply'           => 'agent',
+        'addInternalNote'     => 'agent',
+        'changeStatus'        => 'agent',
+        'changePriority'      => 'agent',
+        'assignTicket'        => 'agent',
+        'resolveTicket'       => 'agent',
+        'reopenTicket'        => 'agent',
+        'getCannedResponses'  => 'agent',
+        'applyCannedResponse' => 'agent',
     ];
 
     private const GENERIC_ERROR = 'The request could not be completed.';
@@ -97,6 +110,9 @@ final class Dispatch
         try {
             $result = $handlers[$action]($payload, $request);
             return Response::json(['ok' => true, 'data' => $result]);
+        } catch (ValidationException $e) {
+            // Safe, user-facing business error (not an unexpected failure).
+            return self::error($e->getMessage(), 422);
         } catch (Throwable $e) {
             $rid = Logger::requestId();
             Logger::error('api_handler_exception', sprintf('%s: %s @ %s:%d', $e::class, $e->getMessage(), $e->getFile(), $e->getLine()));
@@ -120,11 +136,25 @@ final class Dispatch
     private static function handlers(): array
     {
         $actions = new \App\Controllers\ApiActions();
+        $tickets = new \App\Controllers\TicketActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
             'getMe'                => [$actions, 'getMe'],
             'getSystemConfig'      => [$actions, 'getSystemConfig'],
+            // Tickets (Phase 5)
+            'createTicket'         => [$tickets, 'createTicket'],
+            'getTickets'           => [$tickets, 'getTickets'],
+            'getTicket'            => [$tickets, 'getTicket'],
+            'sendReply'            => [$tickets, 'sendReply'],
+            'addInternalNote'      => [$tickets, 'addInternalNote'],
+            'changeStatus'         => [$tickets, 'changeStatus'],
+            'changePriority'       => [$tickets, 'changePriority'],
+            'assignTicket'         => [$tickets, 'assignTicket'],
+            'resolveTicket'        => [$tickets, 'resolveTicket'],
+            'reopenTicket'         => [$tickets, 'reopenTicket'],
+            'getCannedResponses'   => [$tickets, 'getCannedResponses'],
+            'applyCannedResponse'  => [$tickets, 'applyCannedResponse'],
         ];
     }
 

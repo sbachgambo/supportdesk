@@ -47,4 +47,30 @@ final class User
     {
         return (int) ($user['active'] ?? 0) === 1;
     }
+
+    /**
+     * The least-busy active agent's email for auto-assign (§3): fewest open/pending
+     * assigned tickets wins, ties broken by email. Null if there are no active agents.
+     */
+    public static function leastBusyAgentEmail(): ?string
+    {
+        $row = Db::queryOne(
+            "SELECT u.email, COUNT(t.id) AS load_count
+             FROM users u
+             LEFT JOIN tickets t ON t.assigned_to = u.email AND t.status IN ('open','pending')
+             WHERE u.role = 'agent' AND u.active = 1
+             GROUP BY u.email
+             ORDER BY load_count ASC, u.email ASC
+             LIMIT 1"
+        );
+        return $row === null ? null : (string) $row['email'];
+    }
+
+    public static function findActiveAgent(string $email): ?array
+    {
+        return Db::queryOne(
+            "SELECT * FROM users WHERE email = :e AND active = 1 AND role IN ('agent','admin') LIMIT 1",
+            [':e' => $email]
+        );
+    }
 }

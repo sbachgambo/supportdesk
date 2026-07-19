@@ -5,6 +5,17 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-19 — Test-suite runtime
+
+`php tests/run_all.php` now runs ~2 min (Phase 3's argon2id/bcrypt dominate even at the
+reduced testing cost; each phase test also reloads schema+seed). This is fine in a normal
+terminal. For fast iteration use `--static` (~4s) or `--phase N`; the watcher runs static +
+the current phase on save. If a CI wrapper caps individual commands at 2 min, run the suites
+in two segments or in the background. Phase tests share the single p3a_test DB (each drops +
+reloads), so they must run sequentially, not in parallel.
+
+---
+
 ## 2026-07-18 — Phase 3 (Auth): assumptions to reconcile
 
 **Legacy `v2$` hash algorithm is a DOCUMENTED ASSUMPTION, not the confirmed GAS scheme.**
