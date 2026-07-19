@@ -1,0 +1,218 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Phase 6 test (§17.1) — Customers, uploads, categories.
+ * Exit criteria: IDOR suite passes; shell.php→photo.jpg rejected; polyglot JPEG
+ * neutralized; direct storage access blocked (structural); category delete blocked
+ * by child / ticket / rule references; two-level nesting enforced.
+ */
+
+require __DIR__ . '/../lib.php';
+
+$root = dirname(__DIR__, 2);
+if (!defined('P3A_ROOT')) {
+    define('P3A_ROOT', $root);
+}
+require $root . '/vendor/autoload.php';
+
+use App\Core\Config;
+use App\Core\Csrf;
+use App\Core\Db;
+use App\Core\Dispatch;
+use App\Core\Request;
+use App\Core\Session;
+use App\Models\Attachment;
+use App\Models\Category;
+use App\Models\User;
+use App\Security\Rbac;
+use App\Security\Upload;
+use App\Services\TicketService;
+
+$envTesting = $root . '/.env.testing';
+if (!is_file($envTesting)) {
+    T::note('.env.testing not found — SKIPPING Phase 6');
+    exit(T::summary());
+}
+Config::load($envTesting);
+
+try {
+    $pdo = Db::connect();
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    foreach ($pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN) as $t) {
+        $pdo->exec("DROP TABLE IF EXISTS `$t`");
+    }
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+    $pdo->exec((string) file_get_contents("$root/database/schema.sql"));
+    $pdo->exec((string) file_get_contents("$root/database/seed.sql"));
+} catch (Throwable $e) {
+    T::ok(false, 'schema/seed load: ' . $e->getMessage());
+    exit(T::summary());
+}
+
+// ── fixtures ─────────────────────────────────────────────────────────────────
+$fix = sys_get_temp_dir() . '/p3a_fix_' . bin2hex(random_bytes(4));
+mkdir($fix);
+$made = [];
+$mkImage = static function (string $path, string $type) {
+    $img = imagecreatetruecolor(16, 16);
+    imagefilledrectangle($img, 0, 0, 15, 15, imagecolorallocate($img, 10, 120, 200));
+    match ($type) { 'jpg' => imagejpeg($img, $path, 90), 'png' => imagepng($img, $path), default => null };
+    imagedestroy($img);
+};
+$validJpg = "$fix/photo.jpg";   $mkImage($validJpg, 'jpg');
+$validPng = "$fix/pic.png";     $mkImage($validPng, 'png');
+$shellAsJpg = "$fix/evil.jpg";  file_put_contents($shellAsJpg, "<?php system(\$_GET['c']); ?>\n");
+$polyglot = "$fix/poly.jpg";    file_put_contents($polyglot, (string) file_get_contents($validJpg) . "<?php echo 'PWNED'; ?>");
+$svg = "$fix/vector.svg";       file_put_contents($svg, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+
+$cleanup = [];
+
+// ── Upload security (§10.7) ──────────────────────────────────────────────────
+T::suite('Phase 6: upload validation (§10.7)');
+$r = Upload::process('photo.jpg', $validJpg);
+T::ok($r['ok'] === true, 'valid JPEG accepted');
+if ($r['ok']) {
+    $cleanup[] = Upload::storageDir() . '/' . $r['stored_name'];
+    T::eq('image/jpeg', $r['mime_type'], 'MIME detected from content (finfo), not $_FILES');
+    T::ok(strlen((string) $r['stored_name']) === 32 && !str_contains((string) $r['stored_name'], '.'), 'stored name is 32 hex, no extension on disk');
+}
+
+$rp = Upload::process('pic.png', $validPng);
+T::ok($rp['ok'] === true, 'valid PNG accepted');
+if ($rp['ok']) { $cleanup[] = Upload::storageDir() . '/' . $rp['stored_name']; }
+
+// shell.php renamed photo.jpg → content sniff disagrees with extension → rejected
+$rs = Upload::process('photo.jpg', $shellAsJpg);
+T::ok($rs['ok'] === false, 'shell.php renamed photo.jpg is REJECTED (content ≠ extension)');
+
+// .php extension outright not allowed
+$rphp = Upload::process('evil.php', $shellAsJpg);
+T::ok($rphp['ok'] === false, '.php extension rejected by the allowlist');
+
+// .svg excluded (XML that can carry script)
+$rsvg = Upload::process('vector.svg', $svg);
+T::ok($rsvg['ok'] === false, 'SVG rejected (excluded from allowlist)');
+
+// polyglot JPEG+PHP → accepted as image, but GD re-encode STRIPS the payload
+$rpoly = Upload::process('poly.jpg', $polyglot);
+T::ok($rpoly['ok'] === true, 'polyglot JPEG passes the MIME check (valid JPEG header)');
+if ($rpoly['ok']) {
+    $stored = Upload::storageDir() . '/' . $rpoly['stored_name'];
+    $cleanup[] = $stored;
+    $content = (string) file_get_contents($stored);
+    T::ok(!str_contains($content, '<?php') && !str_contains($content, 'PWNED'), 'polyglot NEUTRALIZED: re-encoded file contains no PHP payload');
+}
+
+// path traversal in the filename has nowhere to land
+T::eq('passwd', Upload::sanitizeName('../../../etc/passwd'), 'filename sanitised to basename (no path traversal)');
+T::eq('a b.txt', Upload::sanitizeName("a b.txt\r\n"), 'CR/LF stripped from filename');
+
+// storage is structurally outside the webroot
+$pub = realpath("$root/public");
+$store = realpath(Upload::storageDir());
+T::ok($store !== false && $pub !== false && !str_starts_with($store, $pub), 'storage/uploads is OUTSIDE public/ (no URL maps to it)');
+
+// ── IDOR: customer ownership (D2) ────────────────────────────────────────────
+T::suite('Phase 6: IDOR / ownership (D2)');
+$custA = (int) Db::insert('users', ['public_id' => 'CU-9101', 'name' => 'Cust A', 'email' => 'a@example.com', 'password_hash' => 'x', 'role' => 'customer', 'active' => 1, 'created_at' => gmdate('Y-m-d H:i:s')]);
+$custB = (int) Db::insert('users', ['public_id' => 'CU-9102', 'name' => 'Cust B', 'email' => 'b@example.com', 'password_hash' => 'x', 'role' => 'customer', 'active' => 1, 'created_at' => gmdate('Y-m-d H:i:s')]);
+$agent = ['name' => 'Agent One', 'email' => 'agent1@p3a-support.com.ng', 'role' => 'agent'];
+
+$ta = TicketService::create(['subject' => 'A ticket', 'description' => 'body', 'customer_email' => 'a@example.com', 'customer_user_id' => $custA, 'priority' => 'normal'], 'agent', $agent)['ticket']['ticket_id'];
+$tb = TicketService::create(['subject' => 'B ticket', 'description' => 'body', 'customer_email' => 'b@example.com', 'customer_user_id' => $custB, 'priority' => 'normal'], 'agent', $agent)['ticket']['ticket_id'];
+
+// As customer B
+Session::start($custB, 'b@example.com', 'customer', '203.0.113.40', 'ua', true);
+T::ok(Rbac::ownsTicket((string) $tb), 'customer B owns their own ticket');
+T::ok(!Rbac::ownsTicket((string) $ta), 'customer B does NOT own customer A\'s ticket');
+
+$server = ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/api', 'REMOTE_ADDR' => '203.0.113.40', 'CONTENT_TYPE' => 'application/json'];
+$call = static function (string $action, array $payload) use ($server): array {
+    $req = new Request(post: ['action' => $action, 'payload' => $payload, 'csrf' => Csrf::token()], server: $server);
+    $resp = Dispatch::handle($req);
+    return [$resp->status(), json_decode($resp->body(), true)];
+};
+[$st] = $call('getMyTicket', ['ticket_id' => $ta]);
+T::eq(403, $st, 'customer B reading A\'s ticket via gateway → 403 (owner gate)');
+[$st] = $call('getMyTicket', ['ticket_id' => $tb]);
+T::eq(200, $st, 'customer B reading their own ticket → 200');
+$denied = (int) Db::scalar("SELECT COUNT(*) FROM audit_log WHERE action='authz_denied'");
+T::ok($denied >= 1, 'the IDOR attempt is audit-logged');
+
+// attachment IDOR: A's attachment cannot be downloaded by B
+$att = Upload::process('photo.jpg', $validJpg);
+$cleanup[] = Upload::storageDir() . '/' . $att['stored_name'];
+$attId = Attachment::create(['ticket_id' => $ta, 'original_name' => 'photo.jpg', 'stored_name' => $att['stored_name'], 'mime_type' => 'image/jpeg', 'size_bytes' => $att['size_bytes'], 'sha256' => $att['sha256'], 'is_internal' => false, 'uploaded_by' => 'a@example.com']);
+$uploader = new App\Controllers\UploadController();
+$dlReq = new Request(server: ['REQUEST_METHOD' => 'GET', 'REMOTE_ADDR' => '203.0.113.40']);
+$resp = $uploader->download($dlReq, (string) $attId); // still customer B's session
+T::eq(404, $resp->status(), 'customer B downloading A\'s attachment → 404 (no existence disclosure)');
+
+Session::destroy();
+Session::start($custA, 'a@example.com', 'customer', '203.0.113.41', 'ua', true);
+$resp = $uploader->download($dlReq, (string) $attId);
+T::eq(200, $resp->status(), 'customer A downloading their own attachment → 200');
+T::ok(($resp->headers()['Content-Type'] ?? '') === 'image/jpeg', 'image served with its type');
+T::ok(str_contains($resp->headers()['Content-Disposition'] ?? '', 'attachment;'), 'served as attachment (Content-Disposition)');
+T::eq('nosniff', $resp->headers()['X-Content-Type-Options'] ?? '', 'X-Content-Type-Options: nosniff on download');
+
+// internal attachment hidden from the owning customer
+$attInt = Attachment::create(['ticket_id' => $ta, 'original_name' => 'note.jpg', 'stored_name' => $att['stored_name'], 'mime_type' => 'image/jpeg', 'size_bytes' => 1, 'sha256' => 'x', 'is_internal' => true, 'uploaded_by' => 'agent1@p3a-support.com.ng']);
+$resp = $uploader->download($dlReq, (string) $attInt);
+T::eq(404, $resp->status(), 'internal attachment hidden from the owning customer → 404');
+
+// ── Category CRUD + referential integrity (§3) ───────────────────────────────
+T::suite('Phase 6: category integrity (§3)');
+Session::destroy();
+$admin = User::findByEmail('admin@p3a-support.com.ng');
+Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113.42', 'ua', true);
+$catCall = static function (string $action, array $payload) use ($server): array {
+    $req = new Request(post: ['action' => $action, 'payload' => $payload, 'csrf' => Csrf::token()], server: $server);
+    $resp = Dispatch::handle($req);
+    return [$resp->status(), json_decode($resp->body(), true)];
+};
+
+// two-level enforcement: child under a child is rejected
+[$st, $body] = $catCall('createCategory', ['name' => 'Parent', 'color' => '#123456']);
+$parentId = $body['data']['category_id'] ?? '';
+[$st, $body] = $catCall('createCategory', ['name' => 'Child', 'color' => '#123456', 'parent_id' => $parentId]);
+$childId = $body['data']['category_id'] ?? '';
+T::ok($childId !== '', 'child category created under a top-level parent');
+[$st, $body] = $catCall('createCategory', ['name' => 'Grandchild', 'color' => '#123456', 'parent_id' => $childId]);
+T::eq(422, $st, 'nesting beyond two levels rejected (422)');
+
+// delete blocked by child reference
+[$st, $body] = $catCall('deleteCategory', ['category_id' => $parentId]);
+T::eq(422, $st, 'delete blocked while a sub-category exists');
+T::ok(str_contains($body['error'] ?? '', 'sub-categories'), 'error explains the child block');
+
+// delete blocked by ticket reference
+[$st, $body] = $catCall('createCategory', ['name' => 'Used', 'color' => '#123456']);
+$usedId = $body['data']['category_id'];
+Db::update('tickets', ['category_id' => $usedId], 'ticket_id = :t', [':t' => $ta]);
+[$st, $body] = $catCall('deleteCategory', ['category_id' => $usedId]);
+T::eq(422, $st, 'delete blocked while tickets reference the category');
+
+// delete blocked by routing-rule reference
+[$st, $body] = $catCall('createCategory', ['name' => 'Ruled', 'color' => '#123456']);
+$ruledId = $body['data']['category_id'];
+Db::insert('routing_rules', ['rule_id' => 'RULE-1', 'name' => 'r', 'enabled' => 1, 'conditions' => json_encode([['field' => 'category', 'operator' => 'is', 'value' => $ruledId]]), 'actions' => json_encode([]), 'sort_order' => 1, 'updated_at' => gmdate('Y-m-d H:i:s')]);
+[$st, $body] = $catCall('deleteCategory', ['category_id' => $ruledId]);
+T::eq(422, $st, 'delete blocked while a routing rule references the category');
+
+// delete a category with NO references → success
+[$st, $body] = $catCall('createCategory', ['name' => 'Orphan', 'color' => '#123456']);
+$orphanId = $body['data']['category_id'];
+[$st, $body] = $catCall('deleteCategory', ['category_id' => $orphanId]);
+T::eq(200, $st, 'unreferenced category deletes successfully');
+T::ok(Category::find($orphanId) === null, 'category is gone after delete');
+
+// ── cleanup ──────────────────────────────────────────────────────────────────
+foreach (array_unique($cleanup) as $f) {
+    if (is_file($f)) { unlink($f); }
+}
+array_map('unlink', glob("$fix/*") ?: []);
+rmdir($fix);
+
+exit(T::summary());

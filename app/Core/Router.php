@@ -14,12 +14,23 @@ final class Router
 {
     /** @var array<string, array<string, callable>> method => path => handler */
     private array $routes = [];
+    /** @var array<string, callable> GET prefix => handler(Request, string $rest) */
+    private array $getPrefixes = [];
     /** @var null|callable(Request):Response */
     private $fallback = null;
 
     public function get(string $path, callable $handler): void
     {
         $this->routes['GET'][$this->normalize($path)] = $handler;
+    }
+
+    /**
+     * A GET route with a single trailing segment, e.g. getPrefix('/download', fn)
+     * matches /download/42 and calls the handler with $rest = '42'.
+     */
+    public function getPrefix(string $prefix, callable $handler): void
+    {
+        $this->getPrefixes[$this->normalize($prefix)] = $handler;
     }
 
     public function post(string $path, callable $handler): void
@@ -46,6 +57,15 @@ final class Router
         $handler = $this->routes[$method][$path] ?? null;
         if ($handler !== null) {
             return $handler($request);
+        }
+
+        if ($method === 'GET') {
+            foreach ($this->getPrefixes as $prefix => $prefixHandler) {
+                if (str_starts_with($path, $prefix . '/')) {
+                    $rest = substr($path, strlen($prefix) + 1);
+                    return $prefixHandler($request, $rest);
+                }
+            }
         }
 
         if ($this->fallback !== null) {

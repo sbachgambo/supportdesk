@@ -88,4 +88,39 @@ final class Ticket
     {
         return (int) Db::scalar('SELECT COUNT(*) FROM tickets WHERE status = :s', [':s' => $status]);
     }
+
+    /**
+     * A customer's own tickets: linked by user id OR matching account email (covers
+     * tickets raised anonymously before the account existed, D2). Fully-bound query.
+     *
+     * @return array{rows:array<int,array<string,mixed>>, total:int}
+     */
+    public static function pagedForCustomer(int $userId, string $email, int $page, int $perPage = 10): array
+    {
+        $params = [':uid' => $userId, ':email' => $email];
+        $total = (int) Db::scalar(
+            'SELECT COUNT(*) FROM tickets WHERE customer_user_id = :uid OR customer_email = :email',
+            $params
+        );
+        $params[':limit'] = $perPage;
+        $params[':offset'] = (max(1, $page) - 1) * $perPage;
+        $rows = Db::queryAll(
+            'SELECT ticket_id, subject, priority, status, category_id, created_at, updated_at,
+                    sla_resolution_status, csat_rating
+             FROM tickets
+             WHERE customer_user_id = :uid OR customer_email = :email
+             ORDER BY updated_at DESC
+             LIMIT :limit OFFSET :offset',
+            $params
+        );
+        return ['rows' => $rows, 'total' => $total];
+    }
+
+    public static function setCsat(string $ticketId, int $rating, string $comment): void
+    {
+        Db::update('tickets', [
+            'csat_rating'  => $rating,
+            'csat_comment' => mb_substr($comment, 0, 500),
+        ], 'ticket_id = :t', [':t' => $ticketId]);
+    }
 }

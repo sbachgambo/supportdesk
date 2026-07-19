@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Security;
 
 use App\Core\Session;
+use App\Models\Ticket;
 
 /**
  * Rbac (§10.5) — access-control primitives. DEFAULT DENY.
@@ -49,7 +50,7 @@ final class Rbac
      *   'agent'    — agent or admin
      *   'admin'    — admin only
      *   'customer' — customer only
-     * ('owner' is handled per-ticket in Phase 6, not here.)
+     * ('owner' is record-scoped — see ownsTicket() / the gateway's owner handling.)
      */
     public static function satisfies(string $requirement): bool
     {
@@ -60,5 +61,31 @@ final class Rbac
             'customer' => self::isCustomer(),
             default    => false, // unknown requirement → deny
         };
+    }
+
+    /**
+     * Ownership check (D2, §10.5) for the current session over a ticket.
+     * Staff (agent/admin) bypass by role. A customer owns a ticket when it is linked
+     * to their user id, OR the ticket's customer_email matches their account email
+     * (covers tickets raised anonymously before their account existed).
+     */
+    public static function ownsTicket(string $ticketId): bool
+    {
+        if (self::isAtLeastAgent()) {
+            return true;
+        }
+        if (!self::isAuthenticated()) {
+            return false;
+        }
+        $ticket = Ticket::find($ticketId);
+        if ($ticket === null) {
+            return false;
+        }
+        $uid = Session::userId();
+        $email = Session::email();
+        if ($uid !== null && $ticket['customer_user_id'] !== null && (int) $ticket['customer_user_id'] === $uid) {
+            return true;
+        }
+        return $email !== null && strcasecmp((string) $ticket['customer_email'], $email) === 0;
     }
 }

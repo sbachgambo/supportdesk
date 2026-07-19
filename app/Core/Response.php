@@ -53,6 +53,16 @@ final class Response
         return $r;
     }
 
+    /** Arbitrary body + content type (e.g. a downloaded file stream). */
+    public static function make(string $body, int $status, string $contentType): self
+    {
+        $r = new self();
+        $r->status = $status;
+        $r->body = $body;
+        $r->headers['Content-Type'] = $contentType;
+        return $r;
+    }
+
     public function withHeader(string $name, string $value): self
     {
         $this->headers[$name] = $value;

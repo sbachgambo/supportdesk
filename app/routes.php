@@ -22,6 +22,11 @@ $auth = new AuthController();
 // THE action gateway (§9). Every data/state operation POSTs here as {action,payload,csrf}.
 $router->post('/api', static fn(Request $request): Response => Dispatch::handle($request));
 
+// Attachments (§10.7): multipart upload + access-checked download (not JSON /api).
+$upload = new \App\Controllers\UploadController();
+$router->post('/upload', [$upload, 'upload']);
+$router->getPrefix('/download', [$upload, 'download']);
+
 // Landing page (public). Full landing is built in Phase 9; this is the shell.
 $router->get('/', static function (Request $request): Response {
     $html = View::render('landing', [

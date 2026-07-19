@@ -50,6 +50,16 @@ final class Dispatch
         'reopenTicket'        => 'agent',
         'getCannedResponses'  => 'agent',
         'applyCannedResponse' => 'agent',
+        // Customer portal (Phase 6) — ownership-scoped.
+        'getMyTickets'    => 'customer',
+        'getMyTicket'     => 'owner',
+        'replyToMyTicket' => 'owner',
+        'submitCsat'      => 'owner',
+        // Category admin (Phase 6).
+        'listCategories'  => 'admin',
+        'createCategory'  => 'admin',
+        'updateCategory'  => 'admin',
+        'deleteCategory'  => 'admin',
     ];
 
     private const GENERIC_ERROR = 'The request could not be completed.';
@@ -98,8 +108,16 @@ final class Dispatch
         // ── Gate 5: authorization ──
         if (!$isPublic) {
             $requirement = self::REQUIRES[$action] ?? null;
-            // 'owner' is enforced inside the handler against the specific record (Phase 6).
-            if ($requirement === null || ($requirement !== 'owner' && !Rbac::satisfies($requirement))) {
+            $allowed = false;
+            if ($requirement === 'owner') {
+                // Record-scoped (D2): staff bypass by role; a customer must own the
+                // ticket named in the payload. Enforced HERE, not left to the handler.
+                $ticketId = is_string($payload['ticket_id'] ?? null) ? $payload['ticket_id'] : '';
+                $allowed = Rbac::ownsTicket($ticketId);
+            } elseif ($requirement !== null) {
+                $allowed = Rbac::satisfies($requirement);
+            }
+            if (!$allowed) {
                 Logger::security('api_authz_denied', "action={$action} role=" . (Session::role() ?? '-'));
                 Audit::log((string) (Session::email() ?? '-'), 'authz_denied', $action, '', $request->ip());
                 return self::error('You are not allowed to do that.', 403);
@@ -137,6 +155,8 @@ final class Dispatch
     {
         $actions = new \App\Controllers\ApiActions();
         $tickets = new \App\Controllers\TicketActions();
+        $customer = new \App\Controllers\CustomerActions();
+        $categories = new \App\Controllers\CategoryActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
@@ -155,6 +175,16 @@ final class Dispatch
             'reopenTicket'         => [$tickets, 'reopenTicket'],
             'getCannedResponses'   => [$tickets, 'getCannedResponses'],
             'applyCannedResponse'  => [$tickets, 'applyCannedResponse'],
+            // Customer portal (Phase 6)
+            'getMyTickets'         => [$customer, 'getMyTickets'],
+            'getMyTicket'          => [$customer, 'getMyTicket'],
+            'replyToMyTicket'      => [$customer, 'replyToMyTicket'],
+            'submitCsat'           => [$customer, 'submitCsat'],
+            // Category admin (Phase 6)
+            'listCategories'       => [$categories, 'listCategories'],
+            'createCategory'       => [$categories, 'createCategory'],
+            'updateCategory'       => [$categories, 'updateCategory'],
+            'deleteCategory'       => [$categories, 'deleteCategory'],
         ];
     }
 

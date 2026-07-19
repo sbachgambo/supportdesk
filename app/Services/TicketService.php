@@ -146,6 +146,38 @@ final class TicketService
         return ['ok' => true, 'ticket' => Ticket::find($ticketId)];
     }
 
+    /**
+     * Customer reply from the portal (from_type 'customer'). Reopens a resolved/closed
+     * ticket (clears resolved_at, resolution SLA → pending) and notifies the assignee.
+     */
+    public static function customerReply(string $ticketId, string $text, array $customer): array
+    {
+        $ticket = Ticket::find($ticketId);
+        if ($ticket === null) {
+            return self::err('Ticket not found.');
+        }
+        $text = trim($text);
+        if ($text === '' || mb_strlen($text) > 5000) {
+            return self::err('Reply text is required and must be at most 5000 characters.');
+        }
+
+        Message::add($ticketId, 'customer', $text, (string) ($customer['name'] ?? ''), (string) ($customer['email'] ?? ''), false);
+
+        $fields = [];
+        if (in_array((string) $ticket['status'], ['resolved', 'closed'], true)) {
+            $fields['status'] = 'open';
+            $fields['resolved_at'] = null;
+            $fields['sla_resolution_status'] = 'pending';
+        }
+        Ticket::update($ticketId, $fields);
+
+        Audit::log((string) ($customer['email'] ?? '-'), 'customer_reply', $ticketId);
+        if (($ticket['assigned_to'] ?? null) !== null) {
+            NotificationService::create((string) $ticket['assigned_to'], 'customer_reply', "New customer reply on {$ticketId}", $ticketId);
+        }
+        return ['ok' => true, 'ticket' => Ticket::find($ticketId)];
+    }
+
     /** Internal note — never customer-visible, never counts as first response. */
     public static function addInternalNote(string $ticketId, string $text, array $actor): array
     {
