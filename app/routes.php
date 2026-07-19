@@ -30,6 +30,24 @@ $router->getPrefix('/download', [$upload, 'download']);
 // Reports CSV export (agent+, access-checked; §8).
 $router->get('/export/tickets.csv', [new \App\Controllers\ExportController(), 'ticketsCsv']);
 
+// Routing-rule editor (admin, Phase 11).
+$router->get('/admin/rules', static function (Request $request): Response {
+    if (Session::current() === null) {
+        return redirect('login');
+    }
+    if (Session::role() !== 'admin') {
+        return redirect('dashboard');
+    }
+    return Response::html(View::render('rules', [
+        'title'      => 'Routing rules — P3A Support',
+        'email'      => (string) Session::email(),
+        'role'       => (string) Session::role(),
+        'csrf'       => \App\Core\Csrf::token(),
+        'company'    => \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'pageScript' => 'rules.js',
+    ], 'app'));
+});
+
 // Reports dashboard page (agent+).
 $router->get('/reports', static function (Request $request): Response {
     if (Session::current() === null) {

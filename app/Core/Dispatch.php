@@ -33,6 +33,7 @@ final class Dispatch
         'requestPasswordReset',
         'submitTicket',
         'checkTicketStatus',
+        'getPublicKb',
     ];
 
     /** Authorization requirements for authenticated actions (§9). 'owner' is per-record (Phase 6). */
@@ -82,6 +83,20 @@ final class Dispatch
         'updateRule'         => 'admin',
         'toggleRule'         => 'admin',
         'deleteRule'         => 'admin',
+        // Modules (Phase 11).
+        'getKbArticles'          => 'agent',
+        'getKbArticle'           => 'agent',
+        'publishKbArticle'       => 'agent',
+        'editKbArticle'          => 'agent',
+        'deleteKbArticle'        => 'admin',   // KB delete is admin-only (§3)
+        'getNotifications'       => 'agent',
+        'getUnreadCount'         => 'agent',
+        'markNotificationRead'   => 'agent',
+        'markAllNotificationsRead' => 'agent',
+        'manageCannedResponses'  => 'agent',
+        'createCannedResponse'   => 'agent',
+        'updateCannedResponse'   => 'agent',
+        'deleteCannedResponse'   => 'agent',
     ];
 
     private const GENERIC_ERROR = 'The request could not be completed.';
@@ -183,11 +198,15 @@ final class Dispatch
         $rules = new \App\Controllers\RuleActions();
         $reports = new \App\Controllers\ReportActions();
         $public = new \App\Controllers\PublicActions();
+        $kb = new \App\Controllers\KbActions();
+        $notifs = new \App\Controllers\NotificationActions();
+        $canned = new \App\Controllers\CannedResponseActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
             'submitTicket'         => [$public, 'submitTicket'],
             'checkTicketStatus'    => [$public, 'checkTicketStatus'],
+            'getPublicKb'          => [$kb, 'getPublicKb'],
             'getMe'                => [$actions, 'getMe'],
             'getSystemConfig'      => [$actions, 'getSystemConfig'],
             // Tickets (Phase 5)
@@ -233,6 +252,20 @@ final class Dispatch
             'updateRule'           => [$rules, 'updateRule'],
             'toggleRule'           => [$rules, 'toggleRule'],
             'deleteRule'           => [$rules, 'deleteRule'],
+            // Modules (Phase 11)
+            'getKbArticles'        => [$kb, 'getKbArticles'],
+            'getKbArticle'         => [$kb, 'getKbArticle'],
+            'publishKbArticle'     => [$kb, 'publishKbArticle'],
+            'editKbArticle'        => [$kb, 'editKbArticle'],
+            'deleteKbArticle'      => [$kb, 'deleteKbArticle'],
+            'getNotifications'         => [$notifs, 'getNotifications'],
+            'getUnreadCount'           => [$notifs, 'getUnreadCount'],
+            'markNotificationRead'     => [$notifs, 'markNotificationRead'],
+            'markAllNotificationsRead' => [$notifs, 'markAllNotificationsRead'],
+            'manageCannedResponses' => [$canned, 'manageCannedResponses'],
+            'createCannedResponse'  => [$canned, 'createCannedResponse'],
+            'updateCannedResponse'  => [$canned, 'updateCannedResponse'],
+            'deleteCannedResponse'  => [$canned, 'deleteCannedResponse'],
         ];
     }
 

@@ -25,6 +25,14 @@ $title = $title ?? 'P3A Support';
         <div class="p3a-brand"><?= e($company ?? 'P3A Support') ?></div>
         <nav class="p3a-nav">
             <span class="p3a-user" data-bind="user-name"><?= e($email ?? '') ?></span>
+            <?php if (in_array($role ?? '', ['agent', 'admin'], true)): ?>
+                <div class="p3a-bell-wrap">
+                    <button type="button" class="p3a-bell" data-action="toggle-notifications" aria-label="Notifications">
+                        &#128276;<span class="p3a-badge" data-bind="notif-badge" hidden>0</span>
+                    </button>
+                    <div class="p3a-notif-panel" data-region="notifications" hidden></div>
+                </div>
+            <?php endif; ?>
             <button type="button" class="p3a-theme-toggle" data-action="toggle-theme"
                     aria-label="Toggle dark mode" title="Toggle theme">◑</button>
             <form method="post" action="<?= e(url('logout')) ?>" class="p3a-logout">
