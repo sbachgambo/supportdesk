@@ -20,7 +20,7 @@ $title = $title ?? 'P3A Support';
     <script src="<?= e(asset('js/theme-init.js')) ?>"></script>
     <link rel="stylesheet" href="<?= e(asset('css/app.css')) ?>">
 </head>
-<body data-role="<?= e($role ?? '') ?>">
+<body data-role="<?= e($role ?? '') ?>" data-asset-base="<?= e(asset('')) ?>">
     <header class="p3a-topbar">
         <div class="p3a-brand"><?= e($company ?? 'P3A Support') ?></div>
         <nav class="p3a-nav">
@@ -37,5 +37,9 @@ $title = $title ?? 'P3A Support';
         <?= raw($content) /* trusted: assembled by View from an escaped page template */ ?>
     </main>
     <script src="<?= e(asset('js/app.js')) ?>" defer></script>
+    <?php if (!empty($pageScript)): ?>
+        <?php // page-specific script, self-hosted (CSP script-src 'self') ?>
+        <script src="<?= e(asset('js/' . $pageScript)) ?>" defer></script>
+    <?php endif; ?>
 </body>
 </html>

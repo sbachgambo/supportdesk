@@ -27,6 +27,27 @@ $upload = new \App\Controllers\UploadController();
 $router->post('/upload', [$upload, 'upload']);
 $router->getPrefix('/download', [$upload, 'download']);
 
+// Reports CSV export (agent+, access-checked; §8).
+$router->get('/export/tickets.csv', [new \App\Controllers\ExportController(), 'ticketsCsv']);
+
+// Reports dashboard page (agent+).
+$router->get('/reports', static function (Request $request): Response {
+    if (Session::current() === null) {
+        return redirect('login');
+    }
+    if (!\App\Security\Rbac::isAtLeastAgent()) {
+        return redirect('dashboard');
+    }
+    return Response::html(View::render('reports', [
+        'title'      => 'Reports — P3A Support',
+        'email'      => (string) Session::email(),
+        'role'       => (string) Session::role(),
+        'csrf'       => \App\Core\Csrf::token(),
+        'company'    => \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'pageScript' => 'reports.js',
+    ], 'app'));
+});
+
 // Landing page (public). Full landing is built in Phase 9; this is the shell.
 $router->get('/', static function (Request $request): Response {
     $html = View::render('landing', [

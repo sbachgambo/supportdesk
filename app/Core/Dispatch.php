@@ -50,6 +50,9 @@ final class Dispatch
         'reopenTicket'        => 'agent',
         'getCannedResponses'  => 'agent',
         'applyCannedResponse' => 'agent',
+        // Reports (Phase 8) — staff.
+        'getReports'          => 'agent',
+        'getAgentPerformance' => 'agent',
         // Customer portal (Phase 6) — ownership-scoped.
         'getMyTickets'    => 'customer',
         'getMyTicket'     => 'owner',
@@ -176,6 +179,7 @@ final class Dispatch
         $categories = new \App\Controllers\CategoryActions();
         $admin = new \App\Controllers\AdminActions();
         $rules = new \App\Controllers\RuleActions();
+        $reports = new \App\Controllers\ReportActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
@@ -194,6 +198,9 @@ final class Dispatch
             'reopenTicket'         => [$tickets, 'reopenTicket'],
             'getCannedResponses'   => [$tickets, 'getCannedResponses'],
             'applyCannedResponse'  => [$tickets, 'applyCannedResponse'],
+            // Reports (Phase 8)
+            'getReports'           => [$reports, 'getReports'],
+            'getAgentPerformance'  => [$reports, 'getAgentPerformance'],
             // Customer portal (Phase 6)
             'getMyTickets'         => [$customer, 'getMyTickets'],
             'getMyTicket'          => [$customer, 'getMyTicket'],
