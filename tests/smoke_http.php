@@ -25,11 +25,14 @@ if (!is_file("$root/.env")) {
 
 // Start the built-in server rooted at public/ (front-controller routing).
 $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+// Use a router script so the built-in server matches production's .htaccess:
+// real files under public/ are served as-is; everything else → index.php.
 $cmd = sprintf(
-    'php -d display_errors=0 -S %s:%d -t %s',
+    'php -d display_errors=0 -S %s:%d -t %s %s',
     $host,
     $port,
-    escapeshellarg("$root/public")
+    escapeshellarg("$root/public"),
+    escapeshellarg("$root/tests/_router.php")
 );
 $proc = proc_open($cmd, $descriptors, $pipes, $root);
 if (!is_resource($proc)) {
@@ -136,6 +139,28 @@ try {
         'login page references no off-origin assets (no CDN)');
     T::ok(!preg_match('/\son(click|change|submit)\s*=/i', $loginBody),
         'login page has no inline event handlers (D5)');
+
+    // ── Phase 9: public surfaces over real HTTP ──
+    T::suite('Smoke: public surfaces (Phase 9)');
+    [$st, , $submitBody] = $get("$base/submit");
+    T::eq(200, $st, '/submit → 200');
+    T::ok(str_contains($submitBody, 'name="website"'), '/submit includes the honeypot field');
+    T::ok(!str_contains($submitBody, '>Urgent<') && !preg_match('/value="urgent"/', $submitBody), '/submit does not offer urgent (ceiling)');
+
+    [$st] = $get("$base/status");
+    T::eq(200, $st, '/status → 200');
+
+    // widget loader: JS content type, embeddable header profile
+    [$st, $whdr, $wbody] = $get("$base/widget.js");
+    T::eq(200, $st, '/widget.js → 200');
+    T::ok(stripos($whdr, 'javascript') !== false, '/widget.js served as JavaScript');
+    T::ok(stripos($whdr, 'X-Frame-Options') === false, '/widget.js sends NO X-Frame-Options (embeddable)');
+    T::ok(stripos($whdr, 'frame-ancestors *') !== false, '/widget.js CSP has frame-ancestors *');
+    T::ok(str_contains($wbody, 'iframe') && str_contains($wbody, '/submit?widget=1'), 'widget loader injects the submit iframe');
+
+    // the iframed submit page also gets the embeddable profile
+    [, $iframeHdr] = $get("$base/submit?widget=1");
+    T::ok(stripos($iframeHdr, 'X-Frame-Options') === false, '/submit?widget=1 is embeddable (no XFO)');
 } finally {
     // Shut the server down. On Windows, proc_open via the shell means $proc's PID is
     // the cmd wrapper, not php -S — proc_terminate would orphan the server and leak

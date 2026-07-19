@@ -80,6 +80,46 @@ $router->get('/dashboard', static function (Request $request): Response {
     ], 'app'));
 });
 
+// ── Public surfaces (§9, Phase 9) ──
+$router->get('/submit', static function (Request $request): Response {
+    $widget = $request->query('widget') === '1';
+    return Response::html(View::render('submit', [
+        'title'      => 'Submit a request — ' . \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'csrf'       => \App\Core\Csrf::publicToken('submitTicket'),
+        'categories' => \App\Models\Category::allActive(),
+        'widget'     => $widget,
+        'pageScript' => 'public.js',
+    ], 'main'));
+});
+
+$router->get('/status', static function (Request $request): Response {
+    return Response::html(View::render('status', [
+        'title'      => 'Check ticket status — ' . \App\Models\AppConfig::get('company_name', 'P3A Support'),
+        'csrf'       => \App\Core\Csrf::publicToken('checkTicketStatus'),
+        'pageScript' => 'public.js',
+    ], 'main'));
+});
+
+// Widget loader (§9, §10.12). Routed through index.php so it gets the 'widget' header
+// profile (no X-Frame-Options; frame-ancestors *). Injects an iframe to /submit?widget=1.
+$router->get('/widget.js', static function (Request $request): Response {
+    $js = <<<'JS'
+(function(){
+  var cs = document.currentScript;
+  var base = (cs && cs.src) ? cs.src.replace(/\/widget\.js.*$/, '') : '';
+  var f = document.createElement('iframe');
+  f.src = base + '/submit?widget=1';
+  f.title = 'Support request';
+  f.setAttribute('style', 'border:0;width:100%;max-width:440px;height:620px;');
+  f.setAttribute('loading', 'lazy');
+  if (cs && cs.parentNode) { cs.parentNode.insertBefore(f, cs.nextSibling); }
+  else { document.body.appendChild(f); }
+})();
+JS;
+    return Response::make($js, 200, 'application/javascript; charset=utf-8')
+        ->withHeader('Cache-Control', 'public, max-age=300');
+});
+
 // Scratch/health route — proves the stack returns JSON end-to-end (§15 Phase 2).
 $router->get('/health', static function (Request $request): Response {
     return Response::json([

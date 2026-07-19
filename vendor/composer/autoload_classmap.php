@@ -12,6 +12,7 @@ return array(
     'App\\Controllers\\CategoryActions' => $baseDir . '/app/Controllers/CategoryActions.php',
     'App\\Controllers\\CustomerActions' => $baseDir . '/app/Controllers/CustomerActions.php',
     'App\\Controllers\\ExportController' => $baseDir . '/app/Controllers/ExportController.php',
+    'App\\Controllers\\PublicActions' => $baseDir . '/app/Controllers/PublicActions.php',
     'App\\Controllers\\ReportActions' => $baseDir . '/app/Controllers/ReportActions.php',
     'App\\Controllers\\RuleActions' => $baseDir . '/app/Controllers/RuleActions.php',
     'App\\Controllers\\TicketActions' => $baseDir . '/app/Controllers/TicketActions.php',

@@ -31,6 +31,8 @@ final class Dispatch
     public const PUBLIC_ACTIONS = [
         'getPortalData',
         'requestPasswordReset',
+        'submitTicket',
+        'checkTicketStatus',
     ];
 
     /** Authorization requirements for authenticated actions (§9). 'owner' is per-record (Phase 6). */
@@ -180,9 +182,12 @@ final class Dispatch
         $admin = new \App\Controllers\AdminActions();
         $rules = new \App\Controllers\RuleActions();
         $reports = new \App\Controllers\ReportActions();
+        $public = new \App\Controllers\PublicActions();
         return [
             'getPortalData'        => [$actions, 'getPortalData'],
             'requestPasswordReset' => [$actions, 'requestPasswordReset'],
+            'submitTicket'         => [$public, 'submitTicket'],
+            'checkTicketStatus'    => [$public, 'checkTicketStatus'],
             'getMe'                => [$actions, 'getMe'],
             'getSystemConfig'      => [$actions, 'getSystemConfig'],
             // Tickets (Phase 5)

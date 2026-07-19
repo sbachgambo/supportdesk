@@ -22,5 +22,9 @@ $title = $title ?? 'P3A Support';
         <?php // page content is already-escaped HTML built by the page template ?>
         <?= raw($content) /* trusted: assembled by View from an escaped page template */ ?>
     </main>
+    <?php if (!empty($pageScript)): ?>
+        <?php // page-specific script, self-hosted (CSP script-src 'self') ?>
+        <script src="<?= e(asset('js/' . $pageScript)) ?>" defer></script>
+    <?php endif; ?>
 </body>
 </html>

@@ -39,6 +39,7 @@ class ComposerStaticInit312e6071943076b7e37df53b1d340338
         'App\\Controllers\\CategoryActions' => __DIR__ . '/../..' . '/app/Controllers/CategoryActions.php',
         'App\\Controllers\\CustomerActions' => __DIR__ . '/../..' . '/app/Controllers/CustomerActions.php',
         'App\\Controllers\\ExportController' => __DIR__ . '/../..' . '/app/Controllers/ExportController.php',
+        'App\\Controllers\\PublicActions' => __DIR__ . '/../..' . '/app/Controllers/PublicActions.php',
         'App\\Controllers\\ReportActions' => __DIR__ . '/../..' . '/app/Controllers/ReportActions.php',
         'App\\Controllers\\RuleActions' => __DIR__ . '/../..' . '/app/Controllers/RuleActions.php',
         'App\\Controllers\\TicketActions' => __DIR__ . '/../..' . '/app/Controllers/TicketActions.php',

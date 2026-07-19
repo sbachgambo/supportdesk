@@ -44,9 +44,10 @@ if (Config::isProduction() && !$request->isHttps()) {
 
 // Header profile per route (§10.12): widget is embeddable; reset hides referrer.
 $profile = match (true) {
-    $path === '/widget.js'          => 'widget',
-    $path === '/reset'              => 'reset',
-    default                          => 'default',
+    $path === '/widget.js'                                       => 'widget',
+    $path === '/submit' && $request->query('widget') === '1'     => 'widget', // iframed widget (§10.12)
+    $path === '/reset'                                           => 'reset',
+    default                                                       => 'default',
 };
 SecurityHeaders::send($profile);
 

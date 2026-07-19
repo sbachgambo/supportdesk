@@ -87,3 +87,22 @@ button[type="submit"] {
 .p3a-card h2 { margin: 0 0 .25rem; font-size: .8rem; color: var(--p3a-muted); text-transform: uppercase; letter-spacing: .03em; }
 .p3a-metric { margin: 0; font-size: 1.75rem; font-weight: 700; }
 .p3a-hint, .p3a-greeting { color: var(--p3a-muted); }
+
+/* ── public forms (submit / status / widget) ── */
+.p3a-public-form {
+    max-width: 30rem; margin: 6vh auto; padding: 2rem;
+    background: var(--p3a-surface); border: 1px solid var(--p3a-border); border-radius: .75rem;
+}
+.p3a-public-form label { display: block; margin: .75rem 0 .25rem; font-weight: 600; }
+.p3a-public-form input, .p3a-public-form select, .p3a-public-form textarea {
+    width: 100%; padding: .55rem .7rem; border: 1px solid var(--p3a-border);
+    border-radius: .375rem; background: var(--p3a-bg); color: var(--p3a-fg); font: inherit;
+}
+.p3a-public-form button { margin-top: 1rem; width: 100%; background: var(--p3a-accent); color: var(--p3a-accent-fg); border-color: transparent; }
+.p3a-form-msg { min-height: 1.2em; color: var(--p3a-ok-fg); }
+.p3a-form-msg.is-error { color: var(--p3a-danger); }
+.p3a-status-result { margin-top: 1rem; border-top: 1px solid var(--p3a-border); padding-top: 1rem; }
+.p3a-msg { margin: .5rem 0; padding: .5rem .7rem; border-radius: .375rem; background: var(--p3a-bg); }
+.p3a-msg-agent { background: var(--p3a-ok-bg); }
+/* Honeypot: kept in the DOM for bots but off-screen for humans. */
+.p3a-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
