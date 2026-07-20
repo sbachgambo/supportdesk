@@ -67,6 +67,7 @@ T::eq(200, $st, 'createUser → 200');
 $newAgentId = $body['data']['id'] ?? 0;
 T::ok(str_starts_with((string) ($body['data']['public_id'] ?? ''), 'AG-'), 'agent gets an AG- public id');
 T::ok((int) User::findById($newAgentId)['must_change_pw'] === 1, 'admin-set password forces must_change_pw');
+T::ok((int) Db::scalar("SELECT COUNT(*) FROM mail_log WHERE subject LIKE 'Welcome to %'") >= 1, 'new user gets a welcome email (set-password link)');
 
 // duplicate email rejected
 [$st] = $call('createUser', ['name' => 'Dup', 'email' => 'newagent@example.com', 'role' => 'agent', 'password' => 'another-strong-pass-1']);

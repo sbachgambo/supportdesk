@@ -12,6 +12,8 @@ use App\Models\User;
 use App\Security\Audit;
 use App\Security\PasswordPolicy;
 use App\Services\BackupService;
+use App\Services\Mailer;
+use App\Services\PasswordReset;
 use App\Services\ResetService;
 use App\Services\SlaCalculator;
 
@@ -90,7 +92,43 @@ final class AdminActions
             'organization_id' => in_array($role, ['agent', 'org_admin'], true) && $orgId !== '' ? $orgId : null,
         ]);
         Audit::log((string) Session::email(), 'user_create', $email, "role={$role}");
+        $this->sendWelcomeEmail($email, $name, $role);
         return ['id' => $id, 'public_id' => User::findById($id)['public_id']];
+    }
+
+    /**
+     * Welcome email for a newly created staff member: a single-use "set your password"
+     * link (the hardened reset-token flow — no plaintext password is ever emailed) plus
+     * the sign-in URL. Mailer handles branding, suppression and pretend mode.
+     */
+    private function sendWelcomeEmail(string $email, string $name, string $role): void
+    {
+        $company = AppConfig::get('company_name', 'Support');
+        $raw = PasswordReset::createToken($email, $name);
+        $link = $this->h(\url('reset?token=' . $raw));
+        $login = $this->h(\url('login'));
+        $safeName = $this->h($name !== '' ? $name : 'there');
+        $roleLabel = match ($role) {
+            'admin'     => 'a System Administrator',
+            'org_admin' => 'an Organization Administrator',
+            'agent'     => 'an agent',
+            default     => 'a user',
+        };
+        $body = "<p>Hi {$safeName},</p>"
+            . '<p>An account has been created for you at <strong>' . $this->h($company) . '</strong> as '
+            . $roleLabel . '. Your sign-in email is <strong>' . $this->h($email) . '</strong>.</p>'
+            . '<p>Set your password to get started — this link is valid for 60 minutes and can be used once:</p>'
+            . "<p><a href=\"{$link}\" style=\"display:inline-block;background:#4057F5;color:#fff;text-decoration:none;"
+            . "padding:10px 18px;border-radius:8px;font-weight:700\">Set your password</a></p>"
+            . "<p style=\"color:#6b7280;font-size:13px\">Then sign in at <a href=\"{$login}\">{$login}</a>. "
+            . 'If the link expires, use “Forgot password?” on the sign-in page.</p>'
+            . "<p style=\"color:#6b7280;font-size:12px;word-break:break-all\">{$link}</p>";
+        Mailer::sendTemplate($email, 'Welcome to ' . $company, 'Your account is ready', $body);
+    }
+
+    private function h(string $v): string
+    {
+        return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
     }
 
     public function updateUser(array $payload, Request $request): array
