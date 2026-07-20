@@ -7,7 +7,8 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Core\ValidationException;
 use App\Models\CannedResponse;
-use App\Models\Company;
+use App\Models\Category;
+use App\Models\Organization;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Security\MessageVisibility;
@@ -31,6 +32,32 @@ final class TicketActions
         ];
     }
 
+    /**
+     * The caller's organization scope for isolation (multi-tenancy): admins see ALL
+     * organizations; an agent sees only their own (org-less agents see the general
+     * NULL-org queue). Returns [bool $allOrgs, ?string $orgId].
+     *
+     * @return array{0:bool,1:?string}
+     */
+    private function scope(): array
+    {
+        if ((string) Session::role() === 'admin') {
+            return [true, null];
+        }
+        $me = User::findById((int) Session::userId());
+        $org = (string) ($me['organization_id'] ?? '');
+        return [false, $org === '' ? null : $org];
+    }
+
+    /** Isolation guard for any per-ticket action: throws if the ticket is out of scope. */
+    private function assertInScope(string $ticketId): void
+    {
+        [$allOrgs, $orgId] = $this->scope();
+        if (!Ticket::inScope($ticketId, $allOrgs, $orgId)) {
+            throw new ValidationException('Ticket not found.');
+        }
+    }
+
     private function unwrap(array $result): array
     {
         if (($result['ok'] ?? false) !== true) {
@@ -45,19 +72,21 @@ final class TicketActions
         return ['ticket' => $result['ticket']];
     }
 
-    /** Staff dashboard KPI counts + active agents (for the assign dropdown). */
+    /** Staff dashboard KPI counts (org-scoped) + active agents + organizations. */
     public function getDashboardData(array $payload, Request $request): array
     {
+        [$allOrgs, $orgId] = $this->scope();
         return [
             'kpis' => [
-                'open'         => Ticket::countByStatus('open'),
-                'pending'      => Ticket::countByStatus('pending'),
-                'resolved_24h' => Ticket::countResolvedLast24h(),
-                'breaches'     => Ticket::countActiveBreaches(),
+                'open'         => Ticket::countByStatus('open', $allOrgs, $orgId),
+                'pending'      => Ticket::countByStatus('pending', $allOrgs, $orgId),
+                'resolved_24h' => Ticket::countResolvedLast24h($allOrgs, $orgId),
+                'breaches'     => Ticket::countActiveBreaches($allOrgs, $orgId),
             ],
-            'avg_response_hours' => Ticket::avgFirstResponseHours(),
+            'avg_response_hours' => Ticket::avgFirstResponseHours($allOrgs, $orgId),
             'agents' => User::activeAgents(),
-            'companies' => Company::allActive(),
+            'organizations' => Organization::allActive(),
+            'categories' => Category::allActive(),
         ];
     }
 
@@ -68,7 +97,8 @@ final class TicketActions
             'status'      => is_string($payload['status'] ?? null) ? $payload['status'] : '',
             'assigned_to' => is_string($payload['assigned_to'] ?? null) ? $payload['assigned_to'] : '',
         ];
-        $result = Ticket::paged($filters, $page, 10);
+        [$allOrgs, $orgId] = $this->scope();
+        $result = Ticket::paged($filters, $page, 10, $allOrgs, $orgId);
         return ['rows' => $result['rows'], 'total' => $result['total'], 'page' => $page, 'per_page' => 10];
     }
 
@@ -79,16 +109,29 @@ final class TicketActions
         if (!in_array($view, ['all', 'mine', 'breaches', 'resolved'], true)) {
             $view = 'all';
         }
-        return ['view' => $view, 'tickets' => Ticket::allForView($view, (string) Session::email())];
+        [$allOrgs, $orgId] = $this->scope();
+        return ['view' => $view, 'tickets' => Ticket::allForView($view, (string) Session::email(), $allOrgs, $orgId)];
     }
 
     public function getTicket(array $payload, Request $request): array
     {
         $ticketId = (string) ($payload['ticket_id'] ?? '');
+        [$allOrgs, $orgId] = $this->scope();
+        // Isolation (D2): an agent may only open a ticket in their own organization.
+        // Out-of-scope tickets are indistinguishable from missing ones (no leak).
+        if (!Ticket::inScope($ticketId, $allOrgs, $orgId)) {
+            throw new ValidationException('Ticket not found.');
+        }
         $ticket = Ticket::find($ticketId);
         if ($ticket === null) {
             throw new ValidationException('Ticket not found.');
         }
+        $orgName = '';
+        if (($ticket['organization_id'] ?? null) !== null) {
+            $org = Organization::find((string) $ticket['organization_id']);
+            $orgName = (string) ($org['name'] ?? '');
+        }
+        $ticket['organization_name'] = $orgName;
         $role = (string) Session::role();
         return [
             'ticket'      => $ticket,
@@ -99,6 +142,7 @@ final class TicketActions
 
     public function sendReply(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::reply(
             (string) ($payload['ticket_id'] ?? ''),
             (string) ($payload['text'] ?? ''),
@@ -109,6 +153,7 @@ final class TicketActions
 
     public function addInternalNote(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::addInternalNote(
             (string) ($payload['ticket_id'] ?? ''),
             (string) ($payload['text'] ?? ''),
@@ -119,6 +164,7 @@ final class TicketActions
 
     public function changeStatus(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::changeStatus(
             (string) ($payload['ticket_id'] ?? ''),
             (string) ($payload['status'] ?? ''),
@@ -129,6 +175,7 @@ final class TicketActions
 
     public function changePriority(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::changePriority(
             (string) ($payload['ticket_id'] ?? ''),
             (string) ($payload['priority'] ?? ''),
@@ -139,6 +186,7 @@ final class TicketActions
 
     public function assignTicket(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::assign(
             (string) ($payload['ticket_id'] ?? ''),
             (string) ($payload['assigned_to'] ?? ''),
@@ -149,6 +197,7 @@ final class TicketActions
 
     public function resolveTicket(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::changeStatus(
             (string) ($payload['ticket_id'] ?? ''),
             'resolved',
@@ -159,6 +208,7 @@ final class TicketActions
 
     public function reopenTicket(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $r = $this->unwrap(TicketService::changeStatus(
             (string) ($payload['ticket_id'] ?? ''),
             'open',
@@ -174,6 +224,7 @@ final class TicketActions
 
     public function applyCannedResponse(array $payload, Request $request): array
     {
+        $this->assertInScope((string) ($payload['ticket_id'] ?? ''));
         $ticket = Ticket::find((string) ($payload['ticket_id'] ?? ''));
         $canned = CannedResponse::find((string) ($payload['response_id'] ?? ''));
         if ($ticket === null || $canned === null) {

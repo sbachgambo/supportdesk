@@ -46,13 +46,14 @@ $company = $company ?? 'SupportDesk';
           </div>
         </div>
         <div class="field">
-          <label>Company / Institution <span class="pub-opt">(optional)</span></label>
-          <input type="text" name="company" list="pub-company-list" maxlength="120" placeholder="Type or pick your company">
-          <datalist id="pub-company-list">
-            <?php foreach (($companies ?? []) as $co): ?>
-              <option value="<?= e($co['name']) ?>"></option>
+          <label>Organization *</label>
+          <select name="organization_id" required>
+            <option value="" disabled selected>— Select your organization —</option>
+            <?php foreach (($organizations ?? []) as $o): ?>
+              <option value="<?= e($o['organization_id']) ?>"><?= e($o['name']) ?></option>
             <?php endforeach; ?>
-          </datalist>
+            <option value="__general__">Other / not listed</option>
+          </select>
         </div>
         <div class="pub-row2">
           <div class="field">

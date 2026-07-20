@@ -75,11 +75,11 @@ final class Dispatch
         'createCategory'  => 'admin',
         'updateCategory'  => 'admin',
         'deleteCategory'  => 'admin',
-        // Company/institution admin (managed suggestion list).
-        'listCompanies'   => 'admin',
-        'createCompany'   => 'admin',
-        'updateCompany'   => 'admin',
-        'deleteCompany'   => 'admin',
+        // Organizations (tenants) admin.
+        'listOrganizations'   => 'admin',
+        'createOrganization'  => 'admin',
+        'updateOrganization'  => 'admin',
+        'deleteOrganization'  => 'admin',
         // Admin panel (Phase 7).
         'listUsers'          => 'admin',
         'createUser'         => 'admin',
@@ -213,7 +213,7 @@ final class Dispatch
         $tickets = new \App\Controllers\TicketActions();
         $customer = new \App\Controllers\CustomerActions();
         $categories = new \App\Controllers\CategoryActions();
-        $companies = new \App\Controllers\CompanyActions();
+        $organizations = new \App\Controllers\OrganizationActions();
         $admin = new \App\Controllers\AdminActions();
         $rules = new \App\Controllers\RuleActions();
         $reports = new \App\Controllers\ReportActions();
@@ -264,10 +264,10 @@ final class Dispatch
             'createCategory'       => [$categories, 'createCategory'],
             'updateCategory'       => [$categories, 'updateCategory'],
             'deleteCategory'       => [$categories, 'deleteCategory'],
-            'listCompanies'        => [$companies, 'listCompanies'],
-            'createCompany'        => [$companies, 'createCompany'],
-            'updateCompany'        => [$companies, 'updateCompany'],
-            'deleteCompany'        => [$companies, 'deleteCompany'],
+            'listOrganizations'    => [$organizations, 'listOrganizations'],
+            'createOrganization'   => [$organizations, 'createOrganization'],
+            'updateOrganization'   => [$organizations, 'updateOrganization'],
+            'deleteOrganization'   => [$organizations, 'deleteOrganization'],
             // Admin panel (Phase 7)
             'listUsers'            => [$admin, 'listUsers'],
             'createUser'           => [$admin, 'createUser'],

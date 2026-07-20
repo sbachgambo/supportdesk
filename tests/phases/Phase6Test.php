@@ -24,7 +24,7 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Models\Attachment;
 use App\Models\Category;
-use App\Models\Company;
+use App\Models\Organization;
 use App\Models\User;
 use App\Security\Rbac;
 use App\Security\Upload;
@@ -232,29 +232,55 @@ T::eq(422, $st, 'moving a category that has sub-categories under a parent is rej
 T::eq(200, $st, 'a sub-category can be promoted back to top level');
 T::ok(Category::find($movable)['parent_id'] === null, 'parent cleared on promotion');
 
-// ── companies: admin-managed suggestion list (§3) ────────────────────────────
-T::suite('Phase 6: companies admin');
-[$st, $body] = $catCall('createCompany', ['name' => 'Acme Institute']);
-T::eq(200, $st, 'createCompany succeeds');
-$coId = $body['data']['company_id'] ?? '';
-T::ok($coId !== '', 'company id returned');
-[$st, $body] = $catCall('createCompany', ['name' => 'Acme Institute']);
-T::eq(422, $st, 'duplicate company name rejected');
-[$st, $body] = $catCall('updateCompany', ['company_id' => $coId, 'name' => 'Acme Institute Ltd']);
-T::eq(200, $st, 'rename company succeeds');
-T::eq('Acme Institute Ltd', (string) Company::find($coId)['name'], 'company name persisted');
-[$st, $body] = $catCall('updateCompany', ['company_id' => $coId, 'active' => 0]);
-T::eq(0, (int) Company::find($coId)['active'], 'company deactivated');
-[$st, $body] = $catCall('deleteCompany', ['company_id' => $coId]);
-T::eq(200, $st, 'delete company succeeds');
-T::ok(Company::find($coId) === null, 'company gone after delete');
+// ── organizations: admin CRUD (§3) ───────────────────────────────────────────
+T::suite('Phase 6: organizations admin');
+[$st, $body] = $catCall('createOrganization', ['name' => 'Acme Institute']);
+T::eq(200, $st, 'createOrganization succeeds');
+$orgId = $body['data']['organization_id'] ?? '';
+T::ok($orgId !== '', 'organization id returned');
+[$st, $body] = $catCall('createOrganization', ['name' => 'Acme Institute']);
+T::eq(422, $st, 'duplicate organization name rejected');
+[$st, $body] = $catCall('updateOrganization', ['organization_id' => $orgId, 'name' => 'Acme Institute Ltd']);
+T::eq(200, $st, 'rename organization succeeds');
+T::eq('Acme Institute Ltd', (string) Organization::find($orgId)['name'], 'organization name persisted');
+[$st, $body] = $catCall('updateOrganization', ['organization_id' => $orgId, 'active' => 0]);
+T::eq(0, (int) Organization::find($orgId)['active'], 'organization deactivated');
 
-// company admin is admin-only: an agent is denied
+// ── multi-tenant isolation (D2): an agent sees only their own org's tickets ──
+T::suite('Phase 6: tenant isolation (D2)');
+$orgA = Organization::create(['name' => 'Org Alpha', 'active' => 1]);
+$orgB = Organization::create(['name' => 'Org Beta', 'active' => 1]);
+$agentA = User::findByEmail('agent1@p3a-support.com.ng');
+User::update((int) $agentA['id'], ['organization_id' => $orgA]);
+$actorA = ['name' => 'A', 'email' => 'agent1@p3a-support.com.ng', 'role' => 'agent'];
+$tA = (string) TicketService::create(['subject' => 'A ticket', 'description' => 'x', 'customer_email' => 'a@ex.com', 'organization_id' => $orgA], 'web_form')['ticket']['ticket_id'];
+$tB = (string) TicketService::create(['subject' => 'B ticket', 'description' => 'y', 'customer_email' => 'b@ex.com', 'organization_id' => $orgB], 'web_form')['ticket']['ticket_id'];
+
 Session::destroy();
-$agentUser = User::findByEmail('agent1@p3a-support.com.ng');
-Session::start((int) $agentUser['id'], (string) $agentUser['email'], 'agent', '203.0.113.42', 'ua', true);
-[$st] = $catCall('listCompanies', []);
-T::eq(403, $st, 'agent blocked from company admin (admin-only)');
+Session::start((int) $agentA['id'], 'agent1@p3a-support.com.ng', 'agent', '203.0.113.42', 'ua', true);
+[$st, $body] = $catCall('getTicketsForView', ['view' => 'all']);
+$ids = array_map(static fn($r) => $r['ticket_id'], $body['data']['tickets'] ?? []);
+T::ok(in_array($tA, $ids, true), 'agent sees a ticket in their own organization');
+T::ok(!in_array($tB, $ids, true), 'agent does NOT see another organization\'s ticket (isolation)');
+[$st, $body] = $catCall('getTicket', ['ticket_id' => $tB]);
+T::eq(422, $st, 'agent cannot open a ticket outside their organization (indistinguishable from missing)');
+[$st, $body] = $catCall('changeStatus', ['ticket_id' => $tB, 'status' => 'resolved']);
+T::eq(422, $st, 'agent cannot mutate a ticket outside their organization');
+[$st, $body] = $catCall('getTicket', ['ticket_id' => $tA]);
+T::eq(200, $st, 'agent CAN open a ticket in their own organization');
+
+// an admin sees across organizations
+Session::destroy();
+Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113.42', 'ua', true);
+[$st, $body] = $catCall('getTicketsForView', ['view' => 'all']);
+$adminIds = array_map(static fn($r) => $r['ticket_id'], $body['data']['tickets'] ?? []);
+T::ok(in_array($tA, $adminIds, true) && in_array($tB, $adminIds, true), 'admin sees tickets across all organizations');
+
+// org admin is admin-only: an agent is denied
+Session::destroy();
+Session::start((int) $agentA['id'], 'agent1@p3a-support.com.ng', 'agent', '203.0.113.42', 'ua', true);
+[$st] = $catCall('listOrganizations', []);
+T::eq(403, $st, 'agent blocked from organization admin (admin-only)');
 
 // ── cleanup ──────────────────────────────────────────────────────────────────
 foreach (array_unique($cleanup) as $f) {

@@ -49,21 +49,30 @@ final class User
     }
 
     /**
-     * The least-busy active agent's email for auto-assign (§3): fewest open/pending
-     * assigned tickets wins, ties broken by email. Null if there are no active agents.
+     * The least-busy active agent's email for auto-assign (§3), scoped to an
+     * organization (multi-tenancy): fewest open/pending assigned tickets wins, ties
+     * broken by email. $orgId null → the general pool (agents with no organization).
+     * `<=>` is the NULL-safe equality so NULL matches NULL. Null if none qualify.
      */
-    public static function leastBusyAgentEmail(): ?string
+    public static function leastBusyAgentEmail(?string $orgId = null): ?string
     {
         $row = Db::queryOne(
             "SELECT u.email, COUNT(t.id) AS load_count
              FROM users u
              LEFT JOIN tickets t ON t.assigned_to = u.email AND t.status IN ('open','pending')
-             WHERE u.role = 'agent' AND u.active = 1
+             WHERE u.role = 'agent' AND u.active = 1 AND u.organization_id <=> :org
              GROUP BY u.email
              ORDER BY load_count ASC, u.email ASC
-             LIMIT 1"
+             LIMIT 1",
+            [':org' => $orgId]
         );
         return $row === null ? null : (string) $row['email'];
+    }
+
+    /** Clear the organization link on all users in a deleted organization. */
+    public static function nullifyOrganization(string $orgId): void
+    {
+        Db::update('users', ['organization_id' => null], 'organization_id = :o', [':o' => $orgId]);
     }
 
     /** Active agents + admins, for assignment dropdowns. */
@@ -87,7 +96,7 @@ final class User
     public static function all(): array
     {
         return Db::queryAll(
-            'SELECT id, public_id, name, email, role, active, totp_enabled, must_change_pw, last_login_at, created_at
+            'SELECT id, public_id, name, email, role, active, totp_enabled, must_change_pw, organization_id, last_login_at, created_at
              FROM users ORDER BY role, name'
         );
     }
@@ -95,14 +104,15 @@ final class User
     public static function create(array $data): int
     {
         return (int) Db::insert('users', [
-            'public_id'      => $data['public_id'],
-            'name'           => $data['name'],
-            'email'          => strtolower(trim((string) $data['email'])),
-            'password_hash'  => $data['password_hash'],
-            'role'           => $data['role'],
-            'active'         => 1,
-            'must_change_pw' => !empty($data['must_change_pw']) ? 1 : 0,
-            'created_at'     => gmdate('Y-m-d H:i:s'),
+            'public_id'       => $data['public_id'],
+            'name'            => $data['name'],
+            'email'           => strtolower(trim((string) $data['email'])),
+            'password_hash'   => $data['password_hash'],
+            'role'            => $data['role'],
+            'active'          => 1,
+            'must_change_pw'  => !empty($data['must_change_pw']) ? 1 : 0,
+            'organization_id' => ($data['organization_id'] ?? '') !== '' ? $data['organization_id'] : null,
+            'created_at'      => gmdate('Y-m-d H:i:s'),
         ]);
     }
 

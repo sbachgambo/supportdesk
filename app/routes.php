@@ -134,11 +134,11 @@ $router->get('/submit', static function (Request $request): Response {
     return Response::html(View::render('submit', [
         'title'      => 'Submit a request — ' . $company,
         'company'    => $company,
-        'csrf'       => \App\Core\Csrf::publicToken('submitTicket'),
-        'categories' => \App\Models\Category::allActive(),
-        'companies'  => \App\Models\Company::allActive(),
-        'widget'     => $widget,
-        'pageScript' => 'public.js',
+        'csrf'          => \App\Core\Csrf::publicToken('submitTicket'),
+        'categories'    => \App\Models\Category::allActive(),
+        'organizations' => \App\Models\Organization::allActive(),
+        'widget'        => $widget,
+        'pageScript'    => 'public.js',
     ], 'bare'));
 });
 

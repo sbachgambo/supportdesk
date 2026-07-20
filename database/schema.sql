@@ -20,10 +20,12 @@ CREATE TABLE users (
   totp_enabled   TINYINT(1) NOT NULL DEFAULT 0,
   totp_last_step BIGINT NULL,                              -- last consumed TOTP time-step (replay reject, D8)
   must_change_pw TINYINT(1) NOT NULL DEFAULT 0,            -- set on admin-set passwords
+  organization_id VARCHAR(16) NULL,                        -- agent's organization (tenant); NULL = admin/cross-org or general
   last_login_at  DATETIME NULL,
   created_at     DATETIME NOT NULL,
   INDEX idx_users_email_active (email, active),
-  INDEX idx_users_role_active (role, active)
+  INDEX idx_users_role_active (role, active),
+  INDEX idx_users_org (organization_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── totp_backup_codes ──────────────────────────────────────
@@ -51,15 +53,16 @@ CREATE TABLE categories (
   INDEX idx_cat_active (active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Admin-managed list of client companies/institutions. The ticket stores the company
--- as free text (type-or-pick); this table is the suggestion list, not a hard FK.
-CREATE TABLE companies (
-  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  company_id  VARCHAR(16) UNIQUE NOT NULL,                 -- "CO-0001"
-  name        VARCHAR(120) NOT NULL,
-  active      TINYINT(1) NOT NULL DEFAULT 1,
-  created_at  DATETIME NOT NULL,
-  INDEX idx_co_active (active)
+-- Organizations (tenants). A client picks their organization on the ticket form and
+-- the ticket is routed to that organization's agents (multi-tenancy). Each agent is
+-- linked to one organization (users.organization_id); admins are cross-organization.
+CREATE TABLE organizations (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  organization_id VARCHAR(16) UNIQUE NOT NULL,             -- "ORG-0001"
+  name            VARCHAR(120) NOT NULL,
+  active          TINYINT(1) NOT NULL DEFAULT 1,
+  created_at      DATETIME NOT NULL,
+  INDEX idx_org_active (active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── tickets ────────────────────────────────────────────────
@@ -71,7 +74,7 @@ CREATE TABLE tickets (
   customer_name           VARCHAR(120) NOT NULL DEFAULT '',
   customer_email          VARCHAR(254) NOT NULL,
   customer_user_id        INT UNSIGNED NULL,               -- set when the customer has an account (D2)
-  company                 VARCHAR(120) NOT NULL DEFAULT '', -- client's company/institution (free text; suggestions from `companies`)
+  organization_id         VARCHAR(16) NULL,                -- client's organization (tenant); NULL = general queue
   priority                ENUM('urgent','high','normal','low') NOT NULL DEFAULT 'normal',
   status                  ENUM('open','pending','resolved','closed') NOT NULL DEFAULT 'open',
   category_id             VARCHAR(16) NULL,
@@ -90,6 +93,8 @@ CREATE TABLE tickets (
   csat_comment            VARCHAR(500) NULL,
   FOREIGN KEY (category_id)      REFERENCES categories(category_id) ON DELETE SET NULL,
   FOREIGN KEY (customer_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (organization_id)  REFERENCES organizations(organization_id) ON DELETE SET NULL,
+  INDEX idx_tk_org            (organization_id, status),
   INDEX idx_tk_status_updated (status, updated_at),
   INDEX idx_tk_assigned       (assigned_to, status),
   INDEX idx_tk_customer_email (customer_email),

@@ -49,6 +49,12 @@ final class PublicActions
             throw new ValidationException('Too many submissions right now. Please try again later.');
         }
 
+        // Organization: the form's "Other / not listed" choice maps to the general queue.
+        $orgId = (string) ($payload['organization_id'] ?? '');
+        if ($orgId === '__general__') {
+            $orgId = '';
+        }
+
         // Priority ceiling: the public may not raise a ticket to 'urgent'.
         $priority = (string) ($payload['priority'] ?? 'normal');
         if (!in_array($priority, ['high', 'normal', 'low'], true)) {
@@ -60,7 +66,7 @@ final class PublicActions
             'description'      => mb_substr((string) ($payload['description'] ?? ''), 0, 5000),
             'customer_name'    => mb_substr((string) ($payload['customer_name'] ?? ''), 0, 120),
             'customer_email'   => $email,
-            'company'          => mb_substr((string) ($payload['company'] ?? ''), 0, 120),
+            'organization_id'  => $orgId,
             'priority'         => $priority,
             'category_id'      => (string) ($payload['category_id'] ?? ''),
         ], (string) ($payload['_channel'] ?? 'web_form'));

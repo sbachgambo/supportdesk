@@ -70,10 +70,11 @@ T::eq(1, Message::countForTicket((string) $t1['ticket_id']), 'initial customer m
 $r2 = TicketService::create($base + ['priority' => 'normal', 'subject' => 'Second'], 'agent', $agent);
 T::ok($r2['ticket']['assigned_to'] !== $firstAssignee, 'second auto-assign goes to the less-busy agent');
 
-// company/institution free-text field persists on create (after the balance check,
-// so this extra ticket doesn't perturb the least-busy assignment assertion above)
-$rc = TicketService::create($base + ['company' => 'Northwind Traders'], 'agent', $agent);
-T::eq('Northwind Traders', (string) ($rc['ticket']['company'] ?? ''), 'company/institution stored on the ticket');
+// organization persists on create (after the balance check, so this extra ticket
+// doesn't perturb the least-busy assignment assertion above). existsActive is enforced.
+$orgId = \App\Models\Organization::create(['name' => 'Northwind Traders', 'active' => 1]);
+$rc = TicketService::create($base + ['organization_id' => $orgId], 'agent', $agent);
+T::eq($orgId, (string) ($rc['ticket']['organization_id'] ?? ''), 'organization stored on the ticket');
 
 // ── first-response stamping ──────────────────────────────────────────────────
 T::suite('Phase 5: first-response stamping');

@@ -7,6 +7,7 @@ use App\Core\Db;
 use App\Core\Ids;
 use App\Models\Category;
 use App\Models\Message;
+use App\Models\Organization;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Security\Audit;
@@ -36,7 +37,7 @@ final class TicketService
         $description = trim((string) ($input['description'] ?? ''));
         $customerEmail = strtolower(trim((string) ($input['customer_email'] ?? '')));
         $customerName = trim((string) ($input['customer_name'] ?? ''));
-        $company = trim((string) ($input['company'] ?? ''));
+        $organizationId = trim((string) ($input['organization_id'] ?? ''));
         $priority = (string) ($input['priority'] ?? 'normal');
         $categoryId = trim((string) ($input['category_id'] ?? ''));
         $tags = trim((string) ($input['tags'] ?? ''));
@@ -54,8 +55,9 @@ final class TicketService
         if (mb_strlen($customerName) > 120) {
             return self::err('Customer name is too long.');
         }
-        if (mb_strlen($company) > 120) {
-            return self::err('Company name is too long.');
+        // Organization (tenant): empty = general queue; otherwise it must be a real active org.
+        if ($organizationId !== '' && !Organization::existsActive($organizationId)) {
+            return self::err('Please choose a valid organization.');
         }
         if (!in_array($priority, self::PRIORITIES, true)) {
             return self::err('Invalid priority.');
@@ -88,19 +90,22 @@ final class TicketService
         $now = gmdate('Y-m-d H:i:s');
         $deadlines = SlaCalculator::deadlines($priority, $now);
 
-        // Assignment precedence: routing rule → explicit request → auto-assign least-busy.
+        // Assignment precedence: routing rule → explicit request → auto-assign the
+        // least-busy agent WITHIN the ticket's organization (multi-tenancy). An empty
+        // org routes to the general pool (agents with no organization).
+        $orgForAssign = $organizationId === '' ? null : $organizationId;
         $requested = strtolower(trim((string) ($input['assigned_to'] ?? '')));
         if ($ruleAssignee !== null) {
             $assignee = $ruleAssignee;
         } elseif ($requested !== '' && User::findActiveAgent($requested) !== null) {
             $assignee = $requested;
         } else {
-            $assignee = User::leastBusyAgentEmail();
+            $assignee = User::leastBusyAgentEmail($orgForAssign);
         }
 
         // Sequence + insert in one transaction so concurrent creates can't collide.
         $ticketId = Db::transaction(static function () use (
-            $subject, $description, $customerName, $customerEmail, $company, $priority,
+            $subject, $description, $customerName, $customerEmail, $orgForAssign, $priority,
             $categoryId, $tags, $channel, $assignee, $now, $deadlines, $input
         ): string {
             $tid = Ids::nextTicketId();
@@ -111,7 +116,7 @@ final class TicketService
                 'customer_name'           => $customerName,
                 'customer_email'          => $customerEmail,
                 'customer_user_id'        => $input['customer_user_id'] ?? null,
-                'company'                 => $company,
+                'organization_id'         => $orgForAssign,
                 'priority'                => $priority,
                 'status'                  => 'open',
                 'category_id'             => $categoryId === '' ? null : $categoryId,

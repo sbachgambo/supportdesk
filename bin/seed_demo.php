@@ -2,9 +2,9 @@
 declare(strict_types=1);
 
 /**
- * bin/seed_demo.php — LOCAL DEV. Seeds a spread of realistic tickets (varied status,
- * priority, replies, notes, a resolved one, a breached one) so the dashboard and
- * reports have data to show. Refuses to run in production.
+ * bin/seed_demo.php — LOCAL DEV. Seeds organizations (tenants), links the seed agents
+ * to them, and creates a spread of realistic tickets across organizations (so the
+ * multi-tenant dashboard, isolation, and reports have data). Refuses in production.
  *
  *   php bin/seed_demo.php
  */
@@ -18,15 +18,37 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use App\Core\Config;
 use App\Core\Db;
-use App\Models\Company;
 use App\Models\KbArticle;
+use App\Models\Organization;
 use App\Models\RoutingRule;
+use App\Models\User;
 use App\Services\TicketService;
 
 if (Config::isProduction()) {
     fwrite(STDERR, "Refusing to run in production.\n");
     exit(1);
 }
+
+// ── Organizations + agent links (only if none exist) ────────────────────────
+$orgIds = [];
+if ((int) Db::scalar('SELECT COUNT(*) FROM organizations') === 0) {
+    foreach (['Acme Corporation', 'Northwind Traders', 'Globex Industries'] as $name) {
+        $orgIds[] = Organization::create(['name' => $name, 'active' => 1]);
+    }
+    // Link the two seed agents to the first two organizations (one org per agent).
+    $a1 = User::findByEmail('agent1@p3a-support.com.ng');
+    $a2 = User::findByEmail('agent2@p3a-support.com.ng');
+    if ($a1) { User::update((int) $a1['id'], ['organization_id' => $orgIds[0]]); }
+    if ($a2) { User::update((int) $a2['id'], ['organization_id' => $orgIds[1]]); }
+} else {
+    $orgIds = array_map(static fn(array $o): string => (string) $o['organization_id'], Organization::allActive());
+}
+$orgFor = static function (int $i) use ($orgIds): string {
+    // Rotate: org A, org B, general (no org) — so each agent + the general queue get some.
+    if ($orgIds === []) { return ''; }
+    $slot = $i % 3;
+    return $slot < count($orgIds) && $slot !== 2 ? $orgIds[$slot] : '';
+};
 
 $agent = ['name' => 'Agent One', 'email' => 'agent1@p3a-support.com.ng', 'role' => 'agent'];
 
@@ -42,10 +64,11 @@ $samples = [
 ];
 
 $made = 0;
-foreach ($samples as [$subject, $desc, $email, $priority, $followup]) {
+foreach ($samples as $i => [$subject, $desc, $email, $priority, $followup]) {
     $r = TicketService::create([
         'subject' => $subject, 'description' => $desc, 'customer_email' => $email,
         'customer_name' => explode('@', $email)[0], 'priority' => $priority,
+        'organization_id' => $orgFor($i),
     ], 'web_form');
     if (($r['ok'] ?? false) !== true) {
         continue;
@@ -86,17 +109,7 @@ if ((int) Db::scalar('SELECT COUNT(*) FROM knowledge_base') === 0) {
     }
 }
 
-// A few client companies for the type-or-pick suggestion list (only if empty).
-$coMade = 0;
-if ((int) Db::scalar('SELECT COUNT(*) FROM companies') === 0) {
-    foreach (['Northwind Traders', 'Brightsea Media', 'Fjordtech AS', 'Meadowlark Foods', 'Quanta Labs'] as $name) {
-        Company::create(['name' => $name, 'active' => 1]);
-        $coMade++;
-    }
-}
-
-// Sample routing rules (only if none exist) — all use built-in actions with no
-// external references, so they validate and fire on matching inbound tickets.
+// Sample routing rules (only if none exist) — built-in actions, no external refs.
 $ruleMade = 0;
 if ((int) Db::scalar('SELECT COUNT(*) FROM routing_rules') === 0) {
     $rules = [
@@ -123,4 +136,4 @@ if ((int) Db::scalar('SELECT COUNT(*) FROM routing_rules') === 0) {
     }
 }
 
-fwrite(STDOUT, "Seeded {$made} demo tickets, {$kbMade} KB articles, {$coMade} companies, {$ruleMade} routing rules into '" . Config::string('DB_NAME') . "'.\n");
+fwrite(STDOUT, "Seeded " . count($orgIds) . " organizations, {$made} tickets, {$kbMade} KB articles, {$ruleMade} routing rules into '" . Config::string('DB_NAME') . "'.\n");

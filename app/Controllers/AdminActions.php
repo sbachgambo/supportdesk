@@ -7,6 +7,7 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Core\ValidationException;
 use App\Models\AppConfig;
+use App\Models\Organization;
 use App\Models\User;
 use App\Security\Audit;
 use App\Security\PasswordPolicy;
@@ -59,14 +60,20 @@ final class AdminActions
         if ($policyError !== null) {
             throw new ValidationException($policyError);
         }
+        // Organization link (multi-tenancy): meaningful for agents; validated if given.
+        $orgId = trim((string) ($payload['organization_id'] ?? ''));
+        if ($orgId !== '' && Organization::find($orgId) === null) {
+            throw new ValidationException('Selected organization does not exist.');
+        }
 
         $id = User::create([
-            'public_id'      => User::nextPublicId($role),
-            'name'           => $name,
-            'email'          => $email,
-            'password_hash'  => PasswordPolicy::hash($password),
-            'role'           => $role,
-            'must_change_pw' => true, // admin-set password → must change on first login
+            'public_id'       => User::nextPublicId($role),
+            'name'            => $name,
+            'email'           => $email,
+            'password_hash'   => PasswordPolicy::hash($password),
+            'role'            => $role,
+            'must_change_pw'  => true, // admin-set password → must change on first login
+            'organization_id' => $role === 'agent' && $orgId !== '' ? $orgId : null,
         ]);
         Audit::log((string) Session::email(), 'user_create', $email, "role={$role}");
         return ['id' => $id, 'public_id' => User::findById($id)['public_id']];
@@ -93,6 +100,13 @@ final class AdminActions
                 throw new ValidationException('You cannot change the role of the last active admin.');
             }
             $fields['role'] = $role;
+        }
+        if (array_key_exists('organization_id', $payload)) {
+            $orgId = trim((string) $payload['organization_id']);
+            if ($orgId !== '' && Organization::find($orgId) === null) {
+                throw new ValidationException('Selected organization does not exist.');
+            }
+            $fields['organization_id'] = $orgId === '' ? null : $orgId;
         }
         if ($fields !== []) {
             User::update((int) $target['id'], $fields);

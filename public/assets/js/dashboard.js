@@ -29,12 +29,12 @@
     }
 
     // ── state ─────────────────────────────────────────────────────────────────
-    var state = { view: 'dashboard', ticket: null, agents: [], companies: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null, categoriesAdmin: [], companiesAdmin: [], rulesAdmin: [], ruleEditId: null, entityKind: null, entityId: null };
+    var state = { view: 'dashboard', ticket: null, agents: [], organizations: [], categories: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null, categoriesAdmin: [], organizationsAdmin: [], rulesAdmin: [], ruleEditId: null, entityKind: null, entityId: null };
 
     // ── boot ──────────────────────────────────────────────────────────────────
     async function boot() {
         var d = await api('getDashboardData');
-        if (d && d.ok) { state.agents = d.data.agents || []; state.companies = d.data.companies || []; }
+        if (d && d.ok) { state.agents = d.data.agents || []; state.organizations = d.data.organizations || []; state.categories = d.data.categories || []; }
         var canned = await api('getCannedResponses');
         if (canned && canned.ok) { state.canned = canned.data.responses || []; }
         refreshCounts();
@@ -205,7 +205,7 @@
         replaceChip('d-status', statusChip(t.status));
         replaceChip('d-priority', priorityTag(t.priority));
         bind('d-customer', t.customer_name || '—'); bind('d-email', t.customer_email);
-        bind('d-company', t.company || '—');
+        bind('d-organization', t.organization_name || '—');
         bind('d-sla-resp', t.sla_response_status); bind('d-sla-res', t.sla_resolution_status);
         q('[data-action="change-status"]').value = t.status;
         q('[data-action="change-priority"]').value = t.priority;
@@ -393,14 +393,14 @@
         var c = region('content'); c.textContent = '';
         c.appendChild(header('Admin Panel', 'Manage your helpdesk', false));
         var tabs = el('div', 'tabs');
-        [['agents', 'Agents'], ['categories', 'Categories'], ['companies', 'Companies'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']].forEach(function (pair) {
+        [['agents', 'Agents'], ['organizations', 'Organizations'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']].forEach(function (pair) {
             var t = el('div', 'tab' + (pair[0] === adminTab ? ' active' : ''), pair[1]); t.setAttribute('data-action', 'admin-tab'); t.setAttribute('data-tab', pair[0]); tabs.appendChild(t);
         });
         c.appendChild(tabs);
         var body = el('div'); body.setAttribute('data-region', 'admin-body'); c.appendChild(body);
         if (adminTab === 'agents') { renderAgents(body); }
         else if (adminTab === 'categories') { renderCategories(body); }
-        else if (adminTab === 'companies') { renderCompanies(body); }
+        else if (adminTab === 'organizations') { renderOrganizations(body); }
         else if (adminTab === 'sla') { renderSla(body); }
         else if (adminTab === 'config') { renderConfig(body); }
         else if (adminTab === 'rules') { renderRules(body); }
@@ -421,6 +421,8 @@
         row.appendChild(inp({ type: 'text', placeholder: 'Full name', 'data-newuser': 'name' }));
         row.appendChild(inp({ type: 'email', placeholder: 'Email address', 'data-newuser': 'email' }));
         row.appendChild(sel([['agent', 'Agent'], ['admin', 'Admin']], 'data-newuser', 'role', 'agent'));
+        var orgOpts = [['', 'No organization']].concat((state.organizations || []).map(function (o) { return [o.organization_id, o.name]; }));
+        row.appendChild(sel(orgOpts, 'data-newuser', 'organization_id', ''));
         row.appendChild(inp({ type: 'password', placeholder: 'Temp password', 'data-newuser': 'password', autocomplete: 'new-password' }));
         var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-user'); row.appendChild(add);
         form.appendChild(row);
@@ -429,13 +431,19 @@
 
         var card = el('div', 'table-card');
         var table = el('table'); var thead = el('thead'); var htr = el('tr');
-        ['Name', 'Email', 'Role', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
+        ['Name', 'Email', 'Role', 'Organization', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
         var tb = el('tbody');
         r.data.users.forEach(function (u) {
             var tr = el('tr');
             tr.appendChild(el('td', null, u.name));
             tr.appendChild(el('td', null, u.email));
             var rc = el('td'); rc.appendChild(el('span', 'role-chip role-' + (u.role === 'admin' ? 'admin' : 'agent'), u.role)); tr.appendChild(rc);
+            var oc = el('td');
+            if (u.role === 'agent') {
+                var os = sel([['', '— none —']].concat((state.organizations || []).map(function (o) { return [o.organization_id, o.name]; })), 'data-orguser', String(u.id), u.organization_id || '');
+                os.setAttribute('data-action', 'assign-user-org'); os.setAttribute('data-id', u.id); oc.appendChild(os);
+            } else { oc.appendChild(el('span', 'muted', '—')); }
+            tr.appendChild(oc);
             tr.appendChild(el('td', null, Number(u.active) ? 'Yes' : 'No'));
             var ac = el('td', 'row-actions');
             var tgl = el('button', 'btn-mini', Number(u.active) ? 'Deactivate' : 'Activate');
@@ -457,6 +465,10 @@
         var r = await api(isActive ? 'deactivateUser' : 'activateUser', { id: id });
         toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
         if (r && r.ok) { renderAdmin(); }
+    }
+    async function assignUserOrg(id, orgId) {
+        var r = await api('updateUser', { id: id, organization_id: orgId });
+        toast(r && r.ok ? 'Organization updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
     }
     async function resetUserPw(id, email) {
         var pw = window.prompt('New password for ' + email + ':');
@@ -535,60 +547,61 @@
     }
     function editCategory(id) { var c = (state.categoriesAdmin || []).find(function (x) { return x.category_id === id; }); if (c) { entityEditor('category', c); } }
 
-    // ── Companies (client/institution suggestion list) ────────────────────────
-    async function renderCompanies(body) {
-        var r = await api('listCompanies', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
-        state.companiesAdmin = r.data.companies || [];
+    // ── Organizations (tenants) ───────────────────────────────────────────────
+    async function renderOrganizations(body) {
+        var r = await api('listOrganizations', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        state.organizationsAdmin = r.data.organizations || [];
         var form = el('div', 'admin-form');
-        form.appendChild(el('div', 'admin-form-title', 'Add a company / institution'));
+        form.appendChild(el('div', 'admin-form-title', 'Add an organization'));
         var row = el('div', 'admin-form-row');
-        row.appendChild(inp({ type: 'text', placeholder: 'Company name', 'data-newco': 'name' }));
-        var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-company'); row.appendChild(add);
+        row.appendChild(inp({ type: 'text', placeholder: 'Organization name', 'data-neworg': 'name' }));
+        var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-organization'); row.appendChild(add);
         form.appendChild(row);
-        form.appendChild(el('div', 'admin-form-hint', 'These appear as type-or-pick suggestions in the Company field on ticket forms.'));
+        form.appendChild(el('div', 'admin-form-hint', 'Clients pick their organization on the ticket form; tickets route to that organization’s agents. Assign each agent to an organization on the Agents tab.'));
         body.appendChild(form);
 
         var card = el('div', 'table-card');
         var table = el('table'); var thead = el('thead'); var htr = el('tr');
         ['Name', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
         var tb = el('tbody');
-        if (!state.companiesAdmin.length) { var er = el('tr'); var td = el('td', null, 'No companies yet — add one above.'); td.setAttribute('colspan', '3'); td.style.color = 'var(--ink-muted)'; er.appendChild(td); tb.appendChild(er); }
-        state.companiesAdmin.forEach(function (co) {
+        if (!state.organizationsAdmin.length) { var er = el('tr'); var td = el('td', null, 'No organizations yet — add one above.'); td.setAttribute('colspan', '3'); td.style.color = 'var(--ink-muted)'; er.appendChild(td); tb.appendChild(er); }
+        state.organizationsAdmin.forEach(function (o) {
             var tr = el('tr');
-            tr.appendChild(el('td', null, co.name));
-            tr.appendChild(el('td', null, Number(co.active) ? 'Yes' : 'No'));
+            tr.appendChild(el('td', null, o.name));
+            tr.appendChild(el('td', null, Number(o.active) ? 'Yes' : 'No'));
             var ac = el('td', 'row-actions');
-            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-company'); edit.setAttribute('data-id', co.company_id); ac.appendChild(edit);
-            var tgl = el('button', 'btn-mini', Number(co.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-company'); tgl.setAttribute('data-id', co.company_id); tgl.setAttribute('data-active', Number(co.active) ? '1' : '0'); ac.appendChild(tgl);
-            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-company'); del.setAttribute('data-id', co.company_id); del.setAttribute('data-name', co.name); ac.appendChild(del);
+            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-organization'); edit.setAttribute('data-id', o.organization_id); ac.appendChild(edit);
+            var tgl = el('button', 'btn-mini', Number(o.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-organization'); tgl.setAttribute('data-id', o.organization_id); tgl.setAttribute('data-active', Number(o.active) ? '1' : '0'); ac.appendChild(tgl);
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-organization'); del.setAttribute('data-id', o.organization_id); del.setAttribute('data-name', o.name); ac.appendChild(del);
             tr.appendChild(ac);
             tb.appendChild(tr);
         });
         table.appendChild(tb); card.appendChild(table); body.appendChild(card);
     }
-    async function addCompany() {
-        var i = q('[data-newco="name"]'); var r = await api('createCompany', { name: i ? i.value : '' });
-        toast(r && r.ok ? 'Company added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+    async function addOrganization() {
+        var i = q('[data-neworg="name"]'); var r = await api('createOrganization', { name: i ? i.value : '' });
+        toast(r && r.ok ? 'Organization added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
         if (r && r.ok) { renderAdmin(); }
     }
-    function editCompany(id) { var co = (state.companiesAdmin || []).find(function (x) { return x.company_id === id; }); if (co) { entityEditor('company', co); } }
-    async function toggleCompany(id, isActive) {
-        var r = await api('updateCompany', { company_id: id, active: isActive ? 0 : 1 });
+    function editOrganization(id) { var o = (state.organizationsAdmin || []).find(function (x) { return x.organization_id === id; }); if (o) { entityEditor('organization', o); } }
+    async function toggleOrganization(id, isActive) {
+        var r = await api('updateOrganization', { organization_id: id, active: isActive ? 0 : 1 });
         toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
         if (r && r.ok) { renderAdmin(); }
     }
-    async function deleteCompany(id, name) {
-        if (!window.confirm('Delete company "' + name + '"?')) { return; }
-        var r = await api('deleteCompany', { company_id: id });
+    async function deleteOrganization(id, name) {
+        if (!window.confirm('Delete organization "' + name + '"? Its agents and tickets keep working but become unassigned to it.')) { return; }
+        var r = await api('deleteOrganization', { organization_id: id });
         toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
         if (r && r.ok) { renderAdmin(); }
     }
+    function orgName(id) { var o = (state.organizationsAdmin || state.organizations || []).find(function (x) { return x.organization_id === id; }); return o ? o.name : '—'; }
 
-    // ── shared edit modal for category / company ──────────────────────────────
+    // ── shared edit modal for category / organization ─────────────────────────
     function entityEditor(kind, row) {
         state.entityKind = kind;
-        state.entityId = kind === 'category' ? row.category_id : row.company_id;
-        bind('entity-title', 'Edit ' + (kind === 'category' ? 'category' : 'company'));
+        state.entityId = kind === 'category' ? row.category_id : row.organization_id;
+        bind('entity-title', 'Edit ' + (kind === 'category' ? 'category' : 'organization'));
         var body = region('entity-body'); body.textContent = '';
         body.appendChild(field('Name', inp({ type: 'text', maxlength: kind === 'category' ? '60' : '120', 'data-entity': 'name', value: row.name || '' })));
         if (kind === 'category') {
@@ -614,17 +627,26 @@
             action = 'updateCategory';
             payload = { category_id: state.entityId, name: p.name, color: p.color };
             if ('parent_id' in p) { payload.parent_id = p.parent_id; } // only present when the selector was shown
-        } else { action = 'updateCompany'; payload = { company_id: state.entityId, name: p.name }; }
+        } else { action = 'updateOrganization'; payload = { organization_id: state.entityId, name: p.name }; }
         var r = await api(action, payload);
         if (r && r.ok) { region('entity-modal').hidden = true; toast('Saved', 'success'); renderAdmin(); }
         else if (err) { err.textContent = (r && r.error) || 'Could not save.'; err.classList.add('show'); }
     }
 
-    // Fill the New-Ticket company datalist from the active companies loaded at boot.
-    function populateCompanyList() {
-        var dl = document.getElementById('company-list'); if (!dl) { return; }
-        dl.textContent = '';
-        (state.companies || []).forEach(function (co) { var o = document.createElement('option'); o.value = co.name; dl.appendChild(o); });
+    // Fill the New-Ticket organization + category dropdowns from the lists loaded at boot.
+    function populateNewTicketSelects() {
+        var orgSel = region('new-org');
+        if (orgSel) {
+            orgSel.textContent = '';
+            orgSel.appendChild(new Option('General / none', ''));
+            (state.organizations || []).forEach(function (o) { orgSel.appendChild(new Option(o.name, o.organization_id)); });
+        }
+        var catSel = region('new-category');
+        if (catSel) {
+            catSel.textContent = '';
+            catSel.appendChild(new Option('— none —', ''));
+            (state.categories || []).forEach(function (c) { catSel.appendChild(new Option((c.parent_id ? '— ' : '') + c.name, c.category_id)); });
+        }
     }
 
     // ── Routing rules: add (one condition + one action) + toggle + delete ─────
@@ -812,7 +834,7 @@
         else if (a === 'close-ticket') { region('ticket-modal').hidden = true; }
         else if (a === 'send-reply') { compose(false); }
         else if (a === 'add-note') { compose(true); }
-        else if (a === 'open-new') { q('[data-bind="new-err"]').classList.remove('show'); populateCompanyList(); region('new-modal').hidden = false; }
+        else if (a === 'open-new') { q('[data-bind="new-err"]').classList.remove('show'); populateNewTicketSelects(); region('new-modal').hidden = false; }
         else if (a === 'close-new') { region('new-modal').hidden = true; }
         else if (a === 'toggle-notifications') { toggleNotifs(); }
         else if (a === 'mark-all-notifs') { api('markAllNotificationsRead', {}).then(function () { refreshBadge(); toggleNotifs(); toggleNotifs(); }); }
@@ -830,10 +852,10 @@
         else if (a === 'toggle-category') { toggleCategory(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
         else if (a === 'delete-category') { deleteCategory(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'edit-category') { editCategory(t.getAttribute('data-id')); }
-        else if (a === 'add-company') { addCompany(); }
-        else if (a === 'edit-company') { editCompany(t.getAttribute('data-id')); }
-        else if (a === 'toggle-company') { toggleCompany(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
-        else if (a === 'delete-company') { deleteCompany(t.getAttribute('data-id'), t.getAttribute('data-name')); }
+        else if (a === 'add-organization') { addOrganization(); }
+        else if (a === 'edit-organization') { editOrganization(t.getAttribute('data-id')); }
+        else if (a === 'toggle-organization') { toggleOrganization(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
+        else if (a === 'delete-organization') { deleteOrganization(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'save-entity') { saveEntity(); }
         else if (a === 'close-entity') { region('entity-modal').hidden = true; }
         else if (a === 'add-rule') { addRule(); }
@@ -859,6 +881,7 @@
         else if (a === 'assign-ticket') { changeField('assignTicket', 'assigned_to', e.target.value); }
         else if (a === 'apply-canned') { applyCanned(e.target.value); e.target.value = ''; }
         else if (a === 'upload-attachment') { upload(e.target); }
+        else if (a === 'assign-user-org') { assignUserOrg(e.target.getAttribute('data-id'), e.target.value); }
     });
     document.addEventListener('submit', function (e) {
         var a = e.target.getAttribute('data-action');
