@@ -389,11 +389,18 @@
 
     // ── admin (full: agents + categories + SLA + system + rules + backup) ─────
     var adminTab = 'agents';
+    function isSysAdmin() { return !!(state.me && state.me.role === 'admin'); }
     async function renderAdmin() {
         var c = region('content'); c.textContent = '';
-        c.appendChild(header('Admin Panel', 'Manage your helpdesk', false));
+        var sys = isSysAdmin();
+        c.appendChild(header(sys ? 'Admin Panel' : 'Organization Admin', sys ? 'Manage your helpdesk' : 'Manage your organization’s team', false));
+        // Org admins get only the Agents tab (their own org); system admins get everything.
+        var tabDefs = sys
+            ? [['agents', 'Agents'], ['organizations', 'Organizations'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']]
+            : [['agents', 'Agents']];
+        if (!sys) { adminTab = 'agents'; }
         var tabs = el('div', 'tabs');
-        [['agents', 'Agents'], ['organizations', 'Organizations'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']].forEach(function (pair) {
+        tabDefs.forEach(function (pair) {
             var t = el('div', 'tab' + (pair[0] === adminTab ? ' active' : ''), pair[1]); t.setAttribute('data-action', 'admin-tab'); t.setAttribute('data-tab', pair[0]); tabs.appendChild(t);
         });
         c.appendChild(tabs);
@@ -415,14 +422,18 @@
     async function renderAgents(body) {
         var r = await api('listUsers', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
 
+        var sys = isSysAdmin();
         var form = el('div', 'admin-form');
-        form.appendChild(el('div', 'admin-form-title', 'Add a team member'));
+        form.appendChild(el('div', 'admin-form-title', sys ? 'Add a team member' : 'Add an agent to your organization'));
         var row = el('div', 'admin-form-row');
         row.appendChild(inp({ type: 'text', placeholder: 'Full name', 'data-newuser': 'name' }));
         row.appendChild(inp({ type: 'email', placeholder: 'Email address', 'data-newuser': 'email' }));
-        row.appendChild(sel([['agent', 'Agent'], ['admin', 'Admin']], 'data-newuser', 'role', 'agent'));
-        var orgOpts = [['', 'No organization']].concat((state.organizations || []).map(function (o) { return [o.organization_id, o.name]; }));
-        row.appendChild(sel(orgOpts, 'data-newuser', 'organization_id', ''));
+        if (sys) {
+            // System admin: choose role + organization. Org admin: always an agent in their own org.
+            row.appendChild(sel([['agent', 'Agent'], ['org_admin', 'Organization Admin'], ['admin', 'System Admin']], 'data-newuser', 'role', 'agent'));
+            var orgOpts = [['', 'No organization']].concat((state.organizations || []).map(function (o) { return [o.organization_id, o.name]; }));
+            row.appendChild(sel(orgOpts, 'data-newuser', 'organization_id', ''));
+        }
         row.appendChild(inp({ type: 'password', placeholder: 'Temp password', 'data-newuser': 'password', autocomplete: 'new-password' }));
         var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-user'); row.appendChild(add);
         form.appendChild(row);
@@ -437,12 +448,13 @@
             var tr = el('tr');
             tr.appendChild(el('td', null, u.name));
             tr.appendChild(el('td', null, u.email));
-            var rc = el('td'); rc.appendChild(el('span', 'role-chip role-' + (u.role === 'admin' ? 'admin' : 'agent'), u.role)); tr.appendChild(rc);
+            var roleLabel = u.role === 'org_admin' ? 'Org Admin' : (u.role === 'admin' ? 'System Admin' : 'Agent');
+            var rc = el('td'); rc.appendChild(el('span', 'role-chip role-' + (u.role === 'agent' ? 'agent' : 'admin'), roleLabel)); tr.appendChild(rc);
             var oc = el('td');
-            if (u.role === 'agent') {
+            if (sys && (u.role === 'agent' || u.role === 'org_admin')) {
                 var os = sel([['', '— none —']].concat((state.organizations || []).map(function (o) { return [o.organization_id, o.name]; })), 'data-orguser', String(u.id), u.organization_id || '');
                 os.setAttribute('data-action', 'assign-user-org'); os.setAttribute('data-id', u.id); oc.appendChild(os);
-            } else { oc.appendChild(el('span', 'muted', '—')); }
+            } else { oc.appendChild(el('span', 'muted', orgName(u.organization_id) || '—')); }
             tr.appendChild(oc);
             tr.appendChild(el('td', null, Number(u.active) ? 'Yes' : 'No'));
             var ac = el('td', 'row-actions');

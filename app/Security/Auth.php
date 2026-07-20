@@ -86,7 +86,7 @@ final class Auth
         $role = (string) $user['role'];
         $adminMfaOn = AppConfig::get('require_admin_mfa', '1') === '1';
         $mfaRequired = ($role === 'admin' && $adminMfaOn)
-            || ($role === 'agent' && (int) $user['totp_enabled'] === 1);
+            || (in_array($role, ['agent', 'org_admin'], true) && (int) $user['totp_enabled'] === 1);
 
         Session::start(
             (int) $user['id'],

@@ -121,6 +121,7 @@ $router->get('/dashboard', static function (Request $request): Response {
         'name'       => (string) ($me['name'] ?? Session::email()),
         'role'       => (string) Session::role(),
         'isAdmin'    => Session::role() === 'admin',
+        'canAdmin'   => in_array(Session::role(), ['admin', 'org_admin'], true),
         'csrf'       => \App\Core\Csrf::token(),
         'company'    => \App\Models\AppConfig::get('company_name', 'SupportDesk'),
         'pageScript' => 'dashboard.js',

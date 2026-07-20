@@ -6,6 +6,7 @@ namespace App\Controllers;
 use App\Core\Request;
 use App\Core\Response;
 use App\Core\Session;
+use App\Models\User;
 use App\Security\Audit;
 use App\Security\Rbac;
 use App\Services\ReportService;
@@ -27,7 +28,15 @@ final class ExportController
         }
 
         $period = ReportService::normalizePeriod((int) ($request->query('period') ?? 30));
-        $csv = ReportService::ticketsCsv($period);
+        // Org scope: system admin exports all; org admin / agent only their own org.
+        $allOrgs = Rbac::isAdmin();
+        $orgId = null;
+        if (!$allOrgs) {
+            $me = User::findById((int) Session::userId());
+            $org = (string) ($me['organization_id'] ?? '');
+            $orgId = $org === '' ? null : $org;
+        }
+        $csv = ReportService::ticketsCsv($period, $allOrgs, $orgId);
         Audit::log((string) Session::email(), 'report_export', '', "period={$period}");
 
         return Response::make($csv, 200, 'text/csv; charset=utf-8')

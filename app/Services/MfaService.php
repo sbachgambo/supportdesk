@@ -26,7 +26,7 @@ final class MfaService
         if ($role === 'admin') {
             return AppConfig::get('require_admin_mfa', '1') === '1';
         }
-        return $role === 'agent';
+        return in_array($role, ['agent', 'org_admin'], true);
     }
 
     /** Start enrolment: generate + store an (encrypted) pending secret; return the URI. */

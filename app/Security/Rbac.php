@@ -28,15 +28,28 @@ final class Rbac
         return Session::role();
     }
 
+    /** System Admin — the super admin (cross-organization, all system config). */
     public static function isAdmin(): bool
     {
         return Session::role() === 'admin';
     }
 
-    /** Agents and admins are "staff" — admin is a superset of agent for reads. */
+    /** Organization Admin — scoped to their own organization's data + agents. */
+    public static function isOrgAdmin(): bool
+    {
+        return Session::role() === 'org_admin';
+    }
+
+    /** org_admin and admin — the "manage users" tier (org_admin is scoped in handlers). */
+    public static function isAtLeastOrgAdmin(): bool
+    {
+        return in_array(Session::role(), ['org_admin', 'admin'], true);
+    }
+
+    /** Staff — agent, org_admin, admin. Reads are org-scoped for non-admins downstream. */
     public static function isAtLeastAgent(): bool
     {
-        return in_array(Session::role(), ['agent', 'admin'], true);
+        return in_array(Session::role(), ['agent', 'org_admin', 'admin'], true);
     }
 
     public static function isCustomer(): bool
@@ -46,20 +59,22 @@ final class Rbac
 
     /**
      * Evaluate a requirement token as used in the gateway's REQUIRES map (§9):
-     *   'auth'     — any authenticated session
-     *   'agent'    — agent or admin
-     *   'admin'    — admin only
-     *   'customer' — customer only
+     *   'auth'      — any authenticated session
+     *   'agent'     — agent, org_admin or admin
+     *   'org_admin' — org_admin or admin (org-scoped user management)
+     *   'admin'     — system admin only
+     *   'customer'  — customer only
      * ('owner' is record-scoped — see ownsTicket() / the gateway's owner handling.)
      */
     public static function satisfies(string $requirement): bool
     {
         return match ($requirement) {
-            'auth'     => self::isAuthenticated(),
-            'agent'    => self::isAtLeastAgent(),
-            'admin'    => self::isAdmin(),
-            'customer' => self::isCustomer(),
-            default    => false, // unknown requirement → deny
+            'auth'      => self::isAuthenticated(),
+            'agent'     => self::isAtLeastAgent(),
+            'org_admin' => self::isAtLeastOrgAdmin(),
+            'admin'     => self::isAdmin(),
+            'customer'  => self::isCustomer(),
+            default     => false, // unknown requirement → deny
         };
     }
 

@@ -34,15 +34,20 @@ final class AdminActions
     // ── users / agents CRUD ──────────────────────────────────────────────────
     public function listUsers(array $payload, Request $request): array
     {
-        return ['users' => User::all()];
+        [$sysAdmin, $orgId] = $this->callerCtx();
+        // Org admins see only their own organization's staff; system admins see all.
+        return ['users' => $sysAdmin ? User::all() : User::allInOrg($orgId)];
     }
 
     public function createUser(array $payload, Request $request): array
     {
+        [$sysAdmin, $callerOrg] = $this->callerCtx();
+
         $name = trim((string) ($payload['name'] ?? ''));
         $email = strtolower(trim((string) ($payload['email'] ?? '')));
         $role = (string) ($payload['role'] ?? '');
         $password = (string) ($payload['password'] ?? '');
+        $orgId = trim((string) ($payload['organization_id'] ?? ''));
 
         if ($name === '' || mb_strlen($name) > 120) {
             throw new ValidationException('Name is required (max 120 chars).');
@@ -50,20 +55,29 @@ final class AdminActions
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
             throw new ValidationException('A valid email is required.');
         }
-        if (!in_array($role, ['admin', 'agent', 'customer'], true)) {
-            throw new ValidationException('Invalid role.');
+
+        if ($sysAdmin) {
+            if (!in_array($role, ['admin', 'org_admin', 'agent', 'customer'], true)) {
+                throw new ValidationException('Invalid role.');
+            }
+            if ($orgId !== '' && Organization::find($orgId) === null) {
+                throw new ValidationException('Selected organization does not exist.');
+            }
+        } else {
+            // Org admins may only create AGENTS inside their OWN organization.
+            if ($callerOrg === null) {
+                throw new ValidationException('Your account is not linked to an organization.');
+            }
+            $role = 'agent';
+            $orgId = $callerOrg;
         }
+
         if (User::findByEmail($email) !== null) {
             throw new ValidationException('A user with that email already exists.');
         }
         $policyError = PasswordPolicy::validate($password);
         if ($policyError !== null) {
             throw new ValidationException($policyError);
-        }
-        // Organization link (multi-tenancy): meaningful for agents; validated if given.
-        $orgId = trim((string) ($payload['organization_id'] ?? ''));
-        if ($orgId !== '' && Organization::find($orgId) === null) {
-            throw new ValidationException('Selected organization does not exist.');
         }
 
         $id = User::create([
@@ -73,7 +87,7 @@ final class AdminActions
             'password_hash'   => PasswordPolicy::hash($password),
             'role'            => $role,
             'must_change_pw'  => true, // admin-set password → must change on first login
-            'organization_id' => $role === 'agent' && $orgId !== '' ? $orgId : null,
+            'organization_id' => in_array($role, ['agent', 'org_admin'], true) && $orgId !== '' ? $orgId : null,
         ]);
         Audit::log((string) Session::email(), 'user_create', $email, "role={$role}");
         return ['id' => $id, 'public_id' => User::findById($id)['public_id']];
@@ -82,6 +96,8 @@ final class AdminActions
     public function updateUser(array $payload, Request $request): array
     {
         $target = $this->requireUser($payload);
+        $this->requireManageable($target);
+        [$sysAdmin] = $this->callerCtx();
         $fields = [];
         if (isset($payload['name'])) {
             $name = trim((string) $payload['name']);
@@ -90,9 +106,10 @@ final class AdminActions
             }
             $fields['name'] = $name;
         }
-        if (isset($payload['role'])) {
+        // Role + organization changes are system-admin only.
+        if ($sysAdmin && isset($payload['role'])) {
             $role = (string) $payload['role'];
-            if (!in_array($role, ['admin', 'agent', 'customer'], true)) {
+            if (!in_array($role, ['admin', 'org_admin', 'agent', 'customer'], true)) {
                 throw new ValidationException('Invalid role.');
             }
             // Demoting the last active admin is a lockout — block it.
@@ -101,7 +118,7 @@ final class AdminActions
             }
             $fields['role'] = $role;
         }
-        if (array_key_exists('organization_id', $payload)) {
+        if ($sysAdmin && array_key_exists('organization_id', $payload)) {
             $orgId = trim((string) $payload['organization_id']);
             if ($orgId !== '' && Organization::find($orgId) === null) {
                 throw new ValidationException('Selected organization does not exist.');
@@ -118,6 +135,7 @@ final class AdminActions
     public function deactivateUser(array $payload, Request $request): array
     {
         $target = $this->requireUser($payload);
+        $this->requireManageable($target);
         $this->guardSelf($target, 'deactivate');
         if ((string) $target['role'] === 'admin' && $this->isLastActiveAdmin($target)) {
             throw new ValidationException('You cannot deactivate the last active admin.');
@@ -131,6 +149,7 @@ final class AdminActions
     public function activateUser(array $payload, Request $request): array
     {
         $target = $this->requireUser($payload);
+        $this->requireManageable($target);
         User::setActive((int) $target['id'], true);
         Audit::log((string) Session::email(), 'user_activate', (string) $target['email']);
         return ['ok' => true];
@@ -139,6 +158,7 @@ final class AdminActions
     public function deleteUser(array $payload, Request $request): array
     {
         $target = $this->requireUser($payload);
+        $this->requireManageable($target);
         $this->guardSelf($target, 'delete');
         if ((string) $target['role'] === 'admin' && $this->isLastActiveAdmin($target)) {
             throw new ValidationException('You cannot delete the last active admin.');
@@ -152,6 +172,7 @@ final class AdminActions
     public function adminResetPassword(array $payload, Request $request): array
     {
         $target = $this->requireUser($payload);
+        $this->requireManageable($target);
         $password = (string) ($payload['password'] ?? '');
         $policyError = PasswordPolicy::validate($password);
         if ($policyError !== null) {
@@ -243,6 +264,33 @@ final class AdminActions
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+    /** Caller context for user management: [bool $isSystemAdmin, ?string $orgId]. */
+    private function callerCtx(): array
+    {
+        if ((string) Session::role() === 'admin') {
+            return [true, null];
+        }
+        $me = User::findById((int) Session::userId());
+        $org = (string) ($me['organization_id'] ?? '');
+        return [false, $org === '' ? null : $org];
+    }
+
+    /**
+     * Org-admin boundary: a system admin manages anyone; an org admin may only manage
+     * AGENTS in their OWN organization (never other admins/org-admins or other orgs).
+     */
+    private function requireManageable(array $target): void
+    {
+        [$sysAdmin, $orgId] = $this->callerCtx();
+        if ($sysAdmin) {
+            return;
+        }
+        if ((string) $target['role'] !== 'agent'
+            || (string) ($target['organization_id'] ?? '') !== (string) $orgId) {
+            throw new ValidationException('You can only manage agents in your own organization.');
+        }
+    }
+
     private function requireUser(array $payload): array
     {
         $id = (int) ($payload['id'] ?? 0);

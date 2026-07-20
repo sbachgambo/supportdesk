@@ -80,14 +80,16 @@ final class Dispatch
         'createOrganization'  => 'admin',
         'updateOrganization'  => 'admin',
         'deleteOrganization'  => 'admin',
-        // Admin panel (Phase 7).
-        'listUsers'          => 'admin',
-        'createUser'         => 'admin',
-        'updateUser'         => 'admin',
-        'deactivateUser'     => 'admin',
-        'activateUser'       => 'admin',
-        'deleteUser'         => 'admin',
-        'adminResetPassword' => 'admin',
+        // User management — org_admin (scoped to their own org's agents in the handler)
+        // or system admin (unscoped). The handlers enforce the org boundary for org_admin.
+        'listUsers'          => 'org_admin',
+        'createUser'         => 'org_admin',
+        'updateUser'         => 'org_admin',
+        'deactivateUser'     => 'org_admin',
+        'activateUser'       => 'org_admin',
+        'deleteUser'         => 'org_admin',
+        'adminResetPassword' => 'org_admin',
+        // System configuration — system admin only.
         'updateSlaTargets'   => 'admin',
         'updateConfig'       => 'admin',
         'runBackup'          => 'admin',

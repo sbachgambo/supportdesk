@@ -75,18 +75,18 @@ final class User
         Db::update('users', ['organization_id' => null], 'organization_id = :o', [':o' => $orgId]);
     }
 
-    /** Active agents + admins, for assignment dropdowns. */
+    /** Active staff (agents, org admins, admins) for assignment dropdowns. */
     public static function activeAgents(): array
     {
         return Db::queryAll(
-            "SELECT name, email FROM users WHERE active = 1 AND role IN ('agent','admin') ORDER BY name"
+            "SELECT name, email, organization_id FROM users WHERE active = 1 AND role IN ('agent','org_admin','admin') ORDER BY name"
         );
     }
 
     public static function findActiveAgent(string $email): ?array
     {
         return Db::queryOne(
-            "SELECT * FROM users WHERE email = :e AND active = 1 AND role IN ('agent','admin') LIMIT 1",
+            "SELECT * FROM users WHERE email = :e AND active = 1 AND role IN ('agent','org_admin','admin') LIMIT 1",
             [':e' => $email]
         );
     }
@@ -98,6 +98,16 @@ final class User
         return Db::queryAll(
             'SELECT id, public_id, name, email, role, active, totp_enabled, must_change_pw, organization_id, last_login_at, created_at
              FROM users ORDER BY role, name'
+        );
+    }
+
+    /** Staff in one organization (for org-admin management). NULL-safe org match. */
+    public static function allInOrg(?string $orgId): array
+    {
+        return Db::queryAll(
+            'SELECT id, public_id, name, email, role, active, totp_enabled, must_change_pw, organization_id, last_login_at, created_at
+             FROM users WHERE organization_id <=> :o ORDER BY role, name',
+            [':o' => $orgId]
         );
     }
 
@@ -169,9 +179,10 @@ final class User
     public static function nextPublicId(string $role): string
     {
         $prefix = match ($role) {
-            'admin'    => 'AD',
-            'agent'    => 'AG',
-            default    => 'CU',
+            'admin'     => 'AD',
+            'org_admin' => 'OA',
+            'agent'     => 'AG',
+            default     => 'CU',
         };
         $max = Db::scalar(
             "SELECT MAX(CAST(SUBSTRING_INDEX(public_id, :dash, -1) AS UNSIGNED))

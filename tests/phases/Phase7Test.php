@@ -23,6 +23,7 @@ use App\Core\Dispatch;
 use App\Core\Request;
 use App\Core\Session;
 use App\Models\AppConfig;
+use App\Models\Organization;
 use App\Models\RoutingRule;
 use App\Models\User;
 use App\Services\ResetService;
@@ -195,6 +196,49 @@ T::eq($catsBefore, (int) Db::scalar('SELECT COUNT(*) FROM categories'), 'categor
 T::ok((int) Db::scalar("SELECT COUNT(*) FROM notifications WHERE type='system_alert'") >= 1, 'all admins alerted (§4)');
 if (!empty($body['data']['backup'])) {
     T::ok(is_file(\App\Services\BackupService::backupDir() . '/' . $body['data']['backup']), 'a backup file was written before the delete (§18)');
+}
+
+// ── Organization Admin role: org-scoped user management + system lockout ─────
+T::suite('Phase 7: organization admin role');
+Session::destroy();
+Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113.50', 'ua', true);
+$orgX = Organization::create(['name' => 'Org X', 'active' => 1]);
+$orgY = Organization::create(['name' => 'Org Y', 'active' => 1]);
+[$st, $ob] = $call('createUser', ['name' => 'OA X', 'email' => 'oax@ex.com', 'role' => 'org_admin', 'organization_id' => $orgX, 'password' => 'org-admin-strong-2026']);
+T::eq(200, $st, 'system admin creates an org_admin');
+$oaId = (int) $ob['data']['id'];
+$call('createUser', ['name' => 'Agent X', 'email' => 'agx@ex.com', 'role' => 'agent', 'organization_id' => $orgX, 'password' => 'agent-x-strong-2026']);
+$call('createUser', ['name' => 'Agent Y', 'email' => 'agy@ex.com', 'role' => 'agent', 'organization_id' => $orgY, 'password' => 'agent-y-strong-2026']);
+$agentX = User::findByEmail('agx@ex.com');
+$agentY = User::findByEmail('agy@ex.com');
+
+// act AS the org admin
+Session::destroy();
+Session::start($oaId, 'oax@ex.com', 'org_admin', '203.0.113.51', 'ua', true);
+[$st, $b] = $call('listUsers', []);
+$emails = array_map(static fn($u) => $u['email'], $b['data']['users'] ?? []);
+T::ok(in_array('agx@ex.com', $emails, true), 'org admin sees agents in their own org');
+T::ok(!in_array('agy@ex.com', $emails, true), 'org admin does NOT see another org\'s agents');
+
+// creating a user: forced to role=agent in the org admin's OWN org (payload is ignored)
+[$st, $b] = $call('createUser', ['name' => 'New Ag', 'email' => 'newag@ex.com', 'role' => 'admin', 'organization_id' => $orgY, 'password' => 'new-agent-strong-2026']);
+T::eq(200, $st, 'org admin can add an agent');
+$newAg = User::findByEmail('newag@ex.com');
+T::eq('agent', (string) $newAg['role'], 'org admin-created user is forced to role=agent (cannot mint admins)');
+T::eq($orgX, (string) $newAg['organization_id'], 'org admin-created agent is forced into the org admin\'s own org');
+
+// cannot touch another org's agent; can manage own org's agent
+[$st] = $call('deactivateUser', ['id' => (int) $agentY['id']]);
+T::eq(422, $st, 'org admin cannot manage an agent in another org');
+[$st] = $call('deleteUser', ['id' => (int) $agentY['id']]);
+T::eq(422, $st, 'org admin cannot delete an agent in another org');
+[$st] = $call('deactivateUser', ['id' => (int) $agentX['id']]);
+T::eq(200, $st, 'org admin can deactivate an agent in their own org');
+
+// system controls are denied to an org admin
+foreach ([['getSystemConfig', []], ['updateConfig', ['company_name' => 'Hijack']], ['updateSlaTargets', ['sla_response_urgent' => 10]], ['listOrganizations', []], ['listCategories', []], ['runBackup', []]] as [$act, $pl]) {
+    [$st] = $call($act, $pl);
+    T::eq(403, $st, "org admin blocked from system action: {$act}");
 }
 
 // ── cleanup ──────────────────────────────────────────────────────────────────
