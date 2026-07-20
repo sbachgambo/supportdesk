@@ -23,7 +23,10 @@ final class MfaService
 {
     public static function requiresMfa(string $role): bool
     {
-        return $role === 'admin' || $role === 'agent';
+        if ($role === 'admin') {
+            return AppConfig::get('require_admin_mfa', '1') === '1';
+        }
+        return $role === 'agent';
     }
 
     /** Start enrolment: generate + store an (encrypted) pending secret; return the URI. */

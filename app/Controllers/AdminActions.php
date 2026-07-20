@@ -27,6 +27,7 @@ final class AdminActions
     private const CONFIG_ALLOWLIST = [
         'company_name', 'support_email', 'portal_title', 'portal_tagline',
         'brand_color', 'ticket_prefix', 'business_hours_start', 'business_hours_end', 'business_days',
+        'require_admin_mfa',
     ];
 
     // ── users / agents CRUD ──────────────────────────────────────────────────
@@ -188,6 +189,9 @@ final class AdminActions
             }
             if ($key === 'ticket_prefix' && !preg_match('/^[A-Z]{2,6}$/', $value)) {
                 throw new ValidationException('Ticket prefix must be 2–6 uppercase letters.');
+            }
+            if ($key === 'require_admin_mfa') {
+                $value = ($value !== '' && $value !== '0') ? '1' : '0'; // normalise to a strict flag
             }
             $updates[$key] = mb_substr($value, 0, 255);
         }

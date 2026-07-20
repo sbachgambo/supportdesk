@@ -82,6 +82,15 @@ T::ok($res['success'] && $res['mfa_required'] === true, 'admin login → mfa_req
 $resC = Auth::attempt('customer@example.com', 'P3a-Seed-Change!2026', $IP, 'ua');
 T::ok($resC['success'] && $resC['mfa_required'] === false, 'customer login → no MFA');
 
+// admin MFA is a config toggle: turning require_admin_mfa off lets admins sign in
+// with just a password; the default (on) is restored immediately after.
+\App\Models\AppConfig::set('require_admin_mfa', '0');
+$resOff = Auth::attempt('admin@p3a-support.com.ng', 'P3a-Seed-Change!2026', $IP, 'ua');
+T::ok($resOff['success'] && $resOff['mfa_required'] === false, 'admin login with require_admin_mfa=0 → no MFA');
+\App\Models\AppConfig::set('require_admin_mfa', '1');
+$resOn = Auth::attempt('admin@p3a-support.com.ng', 'P3a-Seed-Change!2026', $IP, 'ua');
+T::ok($resOn['mfa_required'] === true, 'require_admin_mfa=1 restores the admin MFA requirement');
+
 // ── Gateway MFA gate: unverified admin can do nothing but MFA actions ─────────
 T::suite('Phase 12: gateway MFA gate (D8)');
 Session::start((int) $admin['id'], (string) $admin['email'], 'admin', $IP, 'ua', false); // unverified

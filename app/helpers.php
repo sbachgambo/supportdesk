@@ -87,11 +87,9 @@ if (!function_exists('csrf_field')) {
      */
     function csrf_field(): string
     {
-        if (class_exists('App\\Security\\Csrf')) {
-            $token = e(\App\Security\Csrf::token());
-            return '<input type="hidden" name="csrf" value="' . $token . '">';
-        }
-        return '';
+        // Session-bound CSRF token for authenticated forms (the class is App\Core\Csrf).
+        $token = e(\App\Core\Csrf::token());
+        return '<input type="hidden" name="csrf" value="' . $token . '">';
     }
 }
 

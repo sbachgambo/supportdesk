@@ -217,6 +217,16 @@ T::ok(Csrf::validatePublic($pt, 'login'), 'public token validates for its purpos
 T::ok(!Csrf::validatePublic($pt, 'forgot'), 'public token rejected for a different purpose');
 T::ok(!Csrf::validatePublic($pt . 'x', 'login'), 'tampered public token rejected');
 T::ok(!Csrf::validatePublic(base64_encode((time() - 10) . '|deadbeef'), 'login'), 'expired public token rejected');
+
+// csrf_field() (authenticated forms — e.g. the sign-out button) must emit a token the
+// session-bound gate accepts. Regression: it referenced a non-existent class and
+// silently emitted nothing, so logout's CSRF check always failed (§10.8).
+$csrfUser = User::findByEmail('admin@p3a-support.com.ng');
+Session::start((int) $csrfUser['id'], (string) $csrfUser['email'], 'admin', $IP, $UA, true);
+$fieldHtml = csrf_field();
+T::ok(preg_match('/name="csrf" value="([0-9a-f]{64})"/', $fieldHtml, $cm) === 1, 'csrf_field emits a session-bound token input');
+T::ok(Csrf::validate($cm[1] ?? '') === true, 'csrf_field token passes session-bound validation (logout works)');
+
 Session::destroy();
 T::ok(!Csrf::validate('anything'), 'session-bound validate fails with no session');
 

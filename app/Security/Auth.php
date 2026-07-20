@@ -6,6 +6,7 @@ namespace App\Security;
 use App\Core\Config;
 use App\Core\Logger;
 use App\Core\Session;
+use App\Models\AppConfig;
 use App\Models\User;
 
 /**
@@ -77,11 +78,15 @@ final class Auth
         }
         User::touchLastLogin((int) $user['id']);
 
-        // MFA gate (D8): admins ALWAYS start unverified — enrolled ones clear the /mfa
+        // MFA gate (D8): admins are required by default — enrolled ones clear the /mfa
         // challenge, not-yet-enrolled ones are forced through enrolment before the
         // session can act. Agents need it only once they self-enrol. Customers never.
+        // Admin MFA can be turned off via the `require_admin_mfa` config toggle (an
+        // admin who has already enrolled still challenges only while the toggle is on).
         $role = (string) $user['role'];
-        $mfaRequired = $role === 'admin' || ($role === 'agent' && (int) $user['totp_enabled'] === 1);
+        $adminMfaOn = AppConfig::get('require_admin_mfa', '1') === '1';
+        $mfaRequired = ($role === 'admin' && $adminMfaOn)
+            || ($role === 'agent' && (int) $user['totp_enabled'] === 1);
 
         Session::start(
             (int) $user['id'],

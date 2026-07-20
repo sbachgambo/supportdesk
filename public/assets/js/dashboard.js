@@ -771,6 +771,10 @@
         [['company_name', 'Company name'], ['support_email', 'Support email'], ['portal_title', 'Portal title'], ['portal_tagline', 'Portal tagline'], ['ticket_prefix', 'Ticket prefix']].forEach(function (pair) {
             var f = el('div', 'field'); f.appendChild(el('label', null, pair[1])); var i = document.createElement('input'); i.value = cfg[pair[0]] || ''; i.setAttribute('data-cfg', pair[0]); f.appendChild(i); form.appendChild(f);
         });
+        // Security: require two-factor authentication for admin accounts.
+        var mfaF = el('div', 'field'); mfaF.appendChild(el('label', null, 'Require 2FA for admins'));
+        var mfaSel = sel([['1', 'On (recommended)'], ['0', 'Off']], 'data-cfg', 'require_admin_mfa', (cfg.require_admin_mfa === undefined ? '1' : String(cfg.require_admin_mfa)));
+        mfaF.appendChild(mfaSel); mfaF.appendChild(el('div', 'admin-form-hint', 'When off, admins sign in with just their password. Turn on for stronger protection.')); form.appendChild(mfaF);
         var save = el('button', 'btn-submit', 'Save settings'); save.setAttribute('data-action', 'save-config'); form.appendChild(save);
         card.appendChild(form); body.appendChild(card);
     }
