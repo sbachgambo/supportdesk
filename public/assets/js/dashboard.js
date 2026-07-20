@@ -29,12 +29,12 @@
     }
 
     // ── state ─────────────────────────────────────────────────────────────────
-    var state = { view: 'dashboard', ticket: null, agents: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null };
+    var state = { view: 'dashboard', ticket: null, agents: [], companies: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null, categoriesAdmin: [], companiesAdmin: [], rulesAdmin: [], ruleEditId: null, entityKind: null, entityId: null };
 
     // ── boot ──────────────────────────────────────────────────────────────────
     async function boot() {
         var d = await api('getDashboardData');
-        if (d && d.ok) { state.agents = d.data.agents || []; }
+        if (d && d.ok) { state.agents = d.data.agents || []; state.companies = d.data.companies || []; }
         var canned = await api('getCannedResponses');
         if (canned && canned.ok) { state.canned = canned.data.responses || []; }
         refreshCounts();
@@ -205,6 +205,7 @@
         replaceChip('d-status', statusChip(t.status));
         replaceChip('d-priority', priorityTag(t.priority));
         bind('d-customer', t.customer_name || '—'); bind('d-email', t.customer_email);
+        bind('d-company', t.company || '—');
         bind('d-sla-resp', t.sla_response_status); bind('d-sla-res', t.sla_resolution_status);
         q('[data-action="change-status"]').value = t.status;
         q('[data-action="change-priority"]').value = t.priority;
@@ -392,13 +393,14 @@
         var c = region('content'); c.textContent = '';
         c.appendChild(header('Admin Panel', 'Manage your helpdesk', false));
         var tabs = el('div', 'tabs');
-        [['agents', 'Agents'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']].forEach(function (pair) {
+        [['agents', 'Agents'], ['categories', 'Categories'], ['companies', 'Companies'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']].forEach(function (pair) {
             var t = el('div', 'tab' + (pair[0] === adminTab ? ' active' : ''), pair[1]); t.setAttribute('data-action', 'admin-tab'); t.setAttribute('data-tab', pair[0]); tabs.appendChild(t);
         });
         c.appendChild(tabs);
         var body = el('div'); body.setAttribute('data-region', 'admin-body'); c.appendChild(body);
         if (adminTab === 'agents') { renderAgents(body); }
         else if (adminTab === 'categories') { renderCategories(body); }
+        else if (adminTab === 'companies') { renderCompanies(body); }
         else if (adminTab === 'sla') { renderSla(body); }
         else if (adminTab === 'config') { renderConfig(body); }
         else if (adminTab === 'rules') { renderRules(body); }
@@ -473,6 +475,7 @@
     async function renderCategories(body) {
         var r = await api('listCategories', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
         var cats = r.data.categories || [];
+        state.categoriesAdmin = cats;
         var tops = cats.filter(function (c) { return !c.parent_id; });
 
         var form = el('div', 'admin-form');
@@ -490,14 +493,22 @@
         var table = el('table'); var thead = el('thead'); var htr = el('tr');
         ['Name', 'Parent', 'Colour', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
         var byId = {}; cats.forEach(function (c) { byId[c.category_id] = c; });
+        // Order children directly under their parent so the hierarchy reads top-down.
+        var ordered = [];
+        cats.filter(function (c) { return !c.parent_id; }).forEach(function (p) {
+            ordered.push(p);
+            cats.forEach(function (c) { if (c.parent_id === p.category_id) { ordered.push(c); } });
+        });
+        cats.forEach(function (c) { if (ordered.indexOf(c) === -1) { ordered.push(c); } });
         var tb = el('tbody');
-        cats.forEach(function (c) {
-            var tr = el('tr');
-            tr.appendChild(el('td', null, c.name));
+        ordered.forEach(function (c) {
+            var tr = el('tr'); if (c.parent_id) { tr.className = 'cat-child'; }
+            tr.appendChild(el('td', null, (c.parent_id ? '↳ ' : '') + c.name));
             tr.appendChild(el('td', null, c.parent_id && byId[c.parent_id] ? byId[c.parent_id].name : '—'));
             var cc = el('td'); var sw = el('span', 'cat-swatch'); sw.style.background = c.color || '#4057F5'; cc.appendChild(sw); cc.appendChild(el('span', null, ' ' + (c.color || ''))); tr.appendChild(cc);
             tr.appendChild(el('td', null, Number(c.active) ? 'Yes' : 'No'));
             var ac = el('td', 'row-actions');
+            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-category'); edit.setAttribute('data-id', c.category_id); ac.appendChild(edit);
             var tgl = el('button', 'btn-mini', Number(c.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-category'); tgl.setAttribute('data-id', c.category_id); tgl.setAttribute('data-active', Number(c.active) ? '1' : '0'); ac.appendChild(tgl);
             var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-category'); del.setAttribute('data-id', c.category_id); del.setAttribute('data-name', c.name); ac.appendChild(del);
             tr.appendChild(ac);
@@ -522,14 +533,108 @@
         toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
         if (r && r.ok) { renderAdmin(); }
     }
+    function editCategory(id) { var c = (state.categoriesAdmin || []).find(function (x) { return x.category_id === id; }); if (c) { entityEditor('category', c); } }
+
+    // ── Companies (client/institution suggestion list) ────────────────────────
+    async function renderCompanies(body) {
+        var r = await api('listCompanies', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        state.companiesAdmin = r.data.companies || [];
+        var form = el('div', 'admin-form');
+        form.appendChild(el('div', 'admin-form-title', 'Add a company / institution'));
+        var row = el('div', 'admin-form-row');
+        row.appendChild(inp({ type: 'text', placeholder: 'Company name', 'data-newco': 'name' }));
+        var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-company'); row.appendChild(add);
+        form.appendChild(row);
+        form.appendChild(el('div', 'admin-form-hint', 'These appear as type-or-pick suggestions in the Company field on ticket forms.'));
+        body.appendChild(form);
+
+        var card = el('div', 'table-card');
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        ['Name', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
+        var tb = el('tbody');
+        if (!state.companiesAdmin.length) { var er = el('tr'); var td = el('td', null, 'No companies yet — add one above.'); td.setAttribute('colspan', '3'); td.style.color = 'var(--ink-muted)'; er.appendChild(td); tb.appendChild(er); }
+        state.companiesAdmin.forEach(function (co) {
+            var tr = el('tr');
+            tr.appendChild(el('td', null, co.name));
+            tr.appendChild(el('td', null, Number(co.active) ? 'Yes' : 'No'));
+            var ac = el('td', 'row-actions');
+            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-company'); edit.setAttribute('data-id', co.company_id); ac.appendChild(edit);
+            var tgl = el('button', 'btn-mini', Number(co.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-company'); tgl.setAttribute('data-id', co.company_id); tgl.setAttribute('data-active', Number(co.active) ? '1' : '0'); ac.appendChild(tgl);
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-company'); del.setAttribute('data-id', co.company_id); del.setAttribute('data-name', co.name); ac.appendChild(del);
+            tr.appendChild(ac);
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); card.appendChild(table); body.appendChild(card);
+    }
+    async function addCompany() {
+        var i = q('[data-newco="name"]'); var r = await api('createCompany', { name: i ? i.value : '' });
+        toast(r && r.ok ? 'Company added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    function editCompany(id) { var co = (state.companiesAdmin || []).find(function (x) { return x.company_id === id; }); if (co) { entityEditor('company', co); } }
+    async function toggleCompany(id, isActive) {
+        var r = await api('updateCompany', { company_id: id, active: isActive ? 0 : 1 });
+        toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function deleteCompany(id, name) {
+        if (!window.confirm('Delete company "' + name + '"?')) { return; }
+        var r = await api('deleteCompany', { company_id: id });
+        toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+
+    // ── shared edit modal for category / company ──────────────────────────────
+    function entityEditor(kind, row) {
+        state.entityKind = kind;
+        state.entityId = kind === 'category' ? row.category_id : row.company_id;
+        bind('entity-title', 'Edit ' + (kind === 'category' ? 'category' : 'company'));
+        var body = region('entity-body'); body.textContent = '';
+        body.appendChild(field('Name', inp({ type: 'text', maxlength: kind === 'category' ? '60' : '120', 'data-entity': 'name', value: row.name || '' })));
+        if (kind === 'category') {
+            body.appendChild(field('Colour', inp({ type: 'color', value: row.color || '#4057F5', 'data-entity': 'color' })));
+            var hasChildren = (state.categoriesAdmin || []).some(function (c) { return c.parent_id === row.category_id; });
+            if (hasChildren) {
+                body.appendChild(el('div', 'admin-form-hint', 'This category has sub-categories, so it stays top-level.'));
+            } else {
+                var tops = (state.categoriesAdmin || []).filter(function (c) { return !c.parent_id && c.category_id !== row.category_id; });
+                var opts = [['', 'Top level (no parent)']].concat(tops.map(function (c) { return [c.category_id, c.name]; }));
+                body.appendChild(field('Parent category', sel(opts, 'data-entity', 'parent_id', row.parent_id || '')));
+            }
+        }
+        var err = el('div', 'alert error'); err.setAttribute('data-bind', 'entity-err'); body.appendChild(err);
+        var save = el('button', 'btn-submit', 'Save changes'); save.setAttribute('data-action', 'save-entity'); body.appendChild(save);
+        region('entity-modal').hidden = false;
+    }
+    async function saveEntity() {
+        var p = {}; qa('[data-entity]').forEach(function (i) { p[i.getAttribute('data-entity')] = i.value; });
+        var err = q('[data-bind="entity-err"]'); if (err) { err.classList.remove('show'); }
+        var action, payload;
+        if (state.entityKind === 'category') {
+            action = 'updateCategory';
+            payload = { category_id: state.entityId, name: p.name, color: p.color };
+            if ('parent_id' in p) { payload.parent_id = p.parent_id; } // only present when the selector was shown
+        } else { action = 'updateCompany'; payload = { company_id: state.entityId, name: p.name }; }
+        var r = await api(action, payload);
+        if (r && r.ok) { region('entity-modal').hidden = true; toast('Saved', 'success'); renderAdmin(); }
+        else if (err) { err.textContent = (r && r.error) || 'Could not save.'; err.classList.add('show'); }
+    }
+
+    // Fill the New-Ticket company datalist from the active companies loaded at boot.
+    function populateCompanyList() {
+        var dl = document.getElementById('company-list'); if (!dl) { return; }
+        dl.textContent = '';
+        (state.companies || []).forEach(function (co) { var o = document.createElement('option'); o.value = co.name; dl.appendChild(o); });
+    }
 
     // ── Routing rules: add (one condition + one action) + toggle + delete ─────
     async function renderRules(body) {
         var r = await api('listRules', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
         var rules = r.data.rules || [];
+        state.rulesAdmin = rules; state.ruleEditId = null;
 
         var form = el('div', 'admin-form');
-        form.appendChild(el('div', 'admin-form-title', 'Add a routing rule'));
+        var ftitle = el('div', 'admin-form-title', 'Add a routing rule'); ftitle.setAttribute('data-bind', 'rule-form-title'); form.appendChild(ftitle);
         form.appendChild(field('Rule name', inp({ type: 'text', placeholder: 'e.g. Urgent billing issues', 'data-newrule': 'name' })));
         var cRow = el('div', 'admin-form-row');
         cRow.appendChild(el('span', 'admin-form-lead', 'IF'));
@@ -542,7 +647,8 @@
         aRow.appendChild(sel([['set_priority', 'Set priority'], ['set_category', 'Set category'], ['assign_agent', 'Assign agent'], ['add_tag', 'Add tag']], 'data-newrule', 'a_type', 'set_priority'));
         aRow.appendChild(inp({ type: 'text', placeholder: 'value (e.g. urgent, CAT-001, agent email, tag)', 'data-newrule': 'a_value' }));
         form.appendChild(aRow);
-        var add = el('button', 'btn-submit', 'Create rule'); add.setAttribute('data-action', 'add-rule'); add.style.marginTop = '12px'; form.appendChild(add);
+        var add = el('button', 'btn-submit', 'Create rule'); add.setAttribute('data-action', 'add-rule'); add.setAttribute('data-bind', 'rule-save-btn'); add.style.marginTop = '12px'; form.appendChild(add);
+        var cancel = el('button', 'btn-mini', 'Cancel edit'); cancel.setAttribute('data-action', 'cancel-rule-edit'); cancel.setAttribute('data-bind', 'rule-cancel'); cancel.style.cssText = 'margin:12px 0 0 8px;'; cancel.hidden = true; form.appendChild(cancel);
         body.appendChild(form);
 
         var card = el('div', 'table-card');
@@ -557,6 +663,7 @@
             tr.appendChild(el('td', 'rule-summary', acts.map(function (a) { return a.type + '=' + a.value; }).join(', ')));
             tr.appendChild(el('td', null, Number(rl.enabled) ? 'Yes' : 'No'));
             var ac = el('td', 'row-actions');
+            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-rule'); edit.setAttribute('data-id', rl.rule_id); ac.appendChild(edit);
             var tgl = el('button', 'btn-mini', Number(rl.enabled) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-rule'); tgl.setAttribute('data-id', rl.rule_id); tgl.setAttribute('data-enabled', Number(rl.enabled) ? '1' : '0'); ac.appendChild(tgl);
             var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-rule'); del.setAttribute('data-id', rl.rule_id); del.setAttribute('data-name', rl.name); ac.appendChild(del);
             tr.appendChild(ac);
@@ -566,15 +673,41 @@
     }
     function safeParse(s) { try { var v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
     function ruleVal(k) { var i = q('[data-newrule="' + k + '"]'); return i ? i.value : ''; }
+    function ruleSetVal(k, v) { var i = q('[data-newrule="' + k + '"]'); if (i) { i.value = v; } }
+    function editRule(id) {
+        var rl = (state.rulesAdmin || []).find(function (x) { return x.rule_id === id; });
+        if (!rl) { return; }
+        var c = safeParse(rl.conditions)[0] || {}, a = safeParse(rl.actions)[0] || {};
+        ruleSetVal('name', rl.name);
+        ruleSetVal('c_field', c.field || 'subject');
+        ruleSetVal('c_operator', c.operator || 'contains');
+        ruleSetVal('c_value', c.value || '');
+        ruleSetVal('a_type', a.type || 'set_priority');
+        ruleSetVal('a_value', a.value || '');
+        state.ruleEditId = id;
+        bind('rule-form-title', 'Edit routing rule');
+        var btn = q('[data-bind="rule-save-btn"]'); if (btn) { btn.textContent = 'Save changes'; }
+        var cancel = q('[data-bind="rule-cancel"]'); if (cancel) { cancel.hidden = false; }
+        var f = q('[data-bind="rule-form-title"]'); if (f) { f.scrollIntoView({ block: 'center' }); }
+    }
+    function cancelRuleEdit() { state.ruleEditId = null; renderAdmin(); }
     async function addRule() {
+        var editing = state.ruleEditId;
         var payload = {
-            name: ruleVal('name'), enabled: true,
+            name: ruleVal('name'),
             conditions: [{ field: ruleVal('c_field'), operator: ruleVal('c_operator'), value: ruleVal('c_value') }],
             actions: [{ type: ruleVal('a_type'), value: ruleVal('a_value') }]
         };
-        var r = await api('createRule', payload);
-        toast(r && r.ok ? 'Rule created' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
-        if (r && r.ok) { renderAdmin(); }
+        if (editing) {
+            payload.rule_id = editing;
+            var cur = (state.rulesAdmin || []).find(function (x) { return x.rule_id === editing; });
+            payload.enabled = cur ? !!Number(cur.enabled) : true; // preserve enabled state across an edit
+        } else {
+            payload.enabled = true;
+        }
+        var r = await api(editing ? 'updateRule' : 'createRule', payload);
+        toast(r && r.ok ? (editing ? 'Rule updated' : 'Rule created') : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { state.ruleEditId = null; renderAdmin(); }
     }
     async function toggleRule(id, isEnabled) {
         var r = await api('toggleRule', { rule_id: id, enabled: isEnabled ? 0 : 1 });
@@ -675,7 +808,7 @@
         else if (a === 'close-ticket') { region('ticket-modal').hidden = true; }
         else if (a === 'send-reply') { compose(false); }
         else if (a === 'add-note') { compose(true); }
-        else if (a === 'open-new') { q('[data-bind="new-err"]').classList.remove('show'); region('new-modal').hidden = false; }
+        else if (a === 'open-new') { q('[data-bind="new-err"]').classList.remove('show'); populateCompanyList(); region('new-modal').hidden = false; }
         else if (a === 'close-new') { region('new-modal').hidden = true; }
         else if (a === 'toggle-notifications') { toggleNotifs(); }
         else if (a === 'mark-all-notifs') { api('markAllNotificationsRead', {}).then(function () { refreshBadge(); toggleNotifs(); toggleNotifs(); }); }
@@ -692,7 +825,16 @@
         else if (a === 'add-category') { addCategory(); }
         else if (a === 'toggle-category') { toggleCategory(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
         else if (a === 'delete-category') { deleteCategory(t.getAttribute('data-id'), t.getAttribute('data-name')); }
+        else if (a === 'edit-category') { editCategory(t.getAttribute('data-id')); }
+        else if (a === 'add-company') { addCompany(); }
+        else if (a === 'edit-company') { editCompany(t.getAttribute('data-id')); }
+        else if (a === 'toggle-company') { toggleCompany(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
+        else if (a === 'delete-company') { deleteCompany(t.getAttribute('data-id'), t.getAttribute('data-name')); }
+        else if (a === 'save-entity') { saveEntity(); }
+        else if (a === 'close-entity') { region('entity-modal').hidden = true; }
         else if (a === 'add-rule') { addRule(); }
+        else if (a === 'edit-rule') { editRule(t.getAttribute('data-id')); }
+        else if (a === 'cancel-rule-edit') { cancelRuleEdit(); }
         else if (a === 'toggle-rule') { toggleRule(t.getAttribute('data-id'), t.getAttribute('data-enabled') === '1'); }
         else if (a === 'delete-rule') { deleteRule(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'run-backup') { runBackup(); }

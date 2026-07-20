@@ -14,7 +14,7 @@ final class Ticket
     /** Columns a caller is allowed to set on insert (mass-assignment allowlist, §10.5). */
     private const INSERTABLE = [
         'ticket_id', 'subject', 'description', 'customer_name', 'customer_email',
-        'customer_user_id', 'priority', 'status', 'category_id', 'tags', 'channel',
+        'customer_user_id', 'company', 'priority', 'status', 'category_id', 'tags', 'channel',
         'assigned_to', 'created_at', 'updated_at', 'sla_response_deadline',
         'sla_resolution_deadline', 'sla_response_status', 'sla_resolution_status',
     ];

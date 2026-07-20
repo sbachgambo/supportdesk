@@ -18,7 +18,9 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use App\Core\Config;
 use App\Core\Db;
+use App\Models\Company;
 use App\Models\KbArticle;
+use App\Models\RoutingRule;
 use App\Services\TicketService;
 
 if (Config::isProduction()) {
@@ -84,4 +86,41 @@ if ((int) Db::scalar('SELECT COUNT(*) FROM knowledge_base') === 0) {
     }
 }
 
-fwrite(STDOUT, "Seeded {$made} demo tickets and {$kbMade} KB articles into '" . Config::string('DB_NAME') . "'.\n");
+// A few client companies for the type-or-pick suggestion list (only if empty).
+$coMade = 0;
+if ((int) Db::scalar('SELECT COUNT(*) FROM companies') === 0) {
+    foreach (['Northwind Traders', 'Brightsea Media', 'Fjordtech AS', 'Meadowlark Foods', 'Quanta Labs'] as $name) {
+        Company::create(['name' => $name, 'active' => 1]);
+        $coMade++;
+    }
+}
+
+// Sample routing rules (only if none exist) — all use built-in actions with no
+// external references, so they validate and fire on matching inbound tickets.
+$ruleMade = 0;
+if ((int) Db::scalar('SELECT COUNT(*) FROM routing_rules') === 0) {
+    $rules = [
+        ['Billing keywords → High priority',
+            [['field' => 'subject', 'operator' => 'contains', 'value' => 'invoice']],
+            [['type' => 'set_priority', 'value' => 'high']]],
+        ['Refund requests → tag + High',
+            [['field' => 'subject', 'operator' => 'contains', 'value' => 'refund']],
+            [['type' => 'set_priority', 'value' => 'high'], ['type' => 'add_tag', 'value' => 'refund']]],
+        ['Outage wording → Urgent',
+            [['field' => 'description', 'operator' => 'contains', 'value' => 'down']],
+            [['type' => 'set_priority', 'value' => 'urgent'], ['type' => 'add_tag', 'value' => 'outage']]],
+    ];
+    foreach ($rules as [$name, $conditions, $actions]) {
+        RoutingRule::create([
+            'rule_id'    => RoutingRule::nextRuleId(),
+            'name'       => $name,
+            'enabled'    => true,
+            'conditions' => json_encode($conditions),
+            'actions'    => json_encode($actions),
+            'sort_order' => RoutingRule::maxSortOrder() + 1,
+        ]);
+        $ruleMade++;
+    }
+}
+
+fwrite(STDOUT, "Seeded {$made} demo tickets, {$kbMade} KB articles, {$coMade} companies, {$ruleMade} routing rules into '" . Config::string('DB_NAME') . "'.\n");

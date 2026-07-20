@@ -136,6 +136,7 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
       </div>
       <div class="detail-side">
         <div class="side-block"><label>Customer</label><div class="side-value" data-bind="d-customer"></div><div class="side-sub" data-bind="d-email"></div></div>
+        <div class="side-block"><label>Company</label><div class="side-value" data-bind="d-company"></div></div>
         <div class="side-block"><label>Status</label>
           <select class="side-select" data-action="change-status"><option value="open">Open</option><option value="pending">Pending</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select>
         </div>
@@ -164,12 +165,24 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
         <div class="field"><label>Subject</label><input type="text" name="subject" required maxlength="200"></div>
         <div class="field"><label>Customer name</label><input type="text" name="customer_name" maxlength="120"></div>
         <div class="field"><label>Customer email</label><input type="email" name="customer_email" required maxlength="254"></div>
+        <div class="field"><label>Company / Institution</label><input type="text" name="company" list="company-list" maxlength="120" placeholder="Type or pick a company"><datalist id="company-list"></datalist></div>
         <div class="field"><label>Priority</label><select name="priority"><option value="urgent">Urgent</option><option value="high">High</option><option value="normal" selected>Normal</option><option value="low">Low</option></select></div>
         <div class="field"><label>Description</label><textarea name="description" required rows="4" maxlength="5000"></textarea></div>
         <div class="alert error" data-bind="new-err"></div>
         <button type="submit" class="btn-submit">Create ticket</button>
       </form>
     </div>
+  </div>
+</div>
+
+<?php // ── shared admin edit modal (category / company) ── ?>
+<div class="modal-overlay" data-region="entity-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" data-bind="entity-title">Edit</div>
+      <button type="button" class="modal-close" data-action="close-entity">&times;</button>
+    </div>
+    <div class="modal-body" data-region="entity-body"></div>
   </div>
 </div>
 

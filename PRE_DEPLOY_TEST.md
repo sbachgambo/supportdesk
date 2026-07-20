@@ -69,6 +69,7 @@ php bin/totp_code.php admin@p3a-support.com.ng
 - [ ] **Do:** click **Submit** with everything empty. **Expect:** inline red error asking for a valid email / subject / description (form does not submit).
 - [ ] **Do:** fill name, a valid email, subject, description, pick a category + priority; Submit. **Expect:** success view with a green check and a boxed reference id like **`TKT-2026-0001`**. Copy that id + email.
 - [ ] **Do:** note the priority dropdown options. **Expect:** only Low / Normal / High — **no "Urgent"** (public priority ceiling).
+- [ ] **Do:** click the **Company / Institution** field. **Expect:** managed companies appear as suggestions, and you can also type a company that isn't listed.
 - [ ] **Do:** click **Submit another request**. **Expect:** the form resets to blank.
 - [ ] **Do:** toggle dark mode. **Expect:** the whole page switches theme and stays switched on reload.
 
@@ -156,6 +157,8 @@ Open any **open** demo ticket from All Tickets.
 ## 6. Create a ticket (agent side)
 
 - [ ] **Do:** **+ New ticket**, fill subject/customer email/description, pick priority (Urgent available here); Create. **Expect:** modal closes, toast, the new ticket appears at the top of All Tickets and is auto-assigned to an agent.
+- [ ] **Do:** in the **Company / Institution** field, click it. **Expect:** a dropdown of the managed companies appears — and you can also **type a new one** that isn't in the list (combobox).
+- [ ] **Do:** create a ticket with a company set, then open it. **Expect:** the **Company** shows in the ticket detail side panel.
 - [ ] **Do:** try Create with an invalid email. **Expect:** a red validation error, no ticket created.
 
 ---
@@ -198,8 +201,17 @@ Sidebar shows **Administration → Admin Panel** (only for admins).
 
 ### 9.2 Categories
 - [ ] **Do:** **Categories** tab → **Add** a category (name + colour + parent). **Expect:** appears in the table.
+- [ ] **Do:** **Edit** a category → change its name, colour, and **Parent category** → **Save changes**. **Expect:** toast "Saved"; a re-parented category now shows indented (↳) under its parent in the table.
+- [ ] **Do:** create two top-level categories, then Edit one and set the other as its **Parent**. **Expect:** it becomes a sub-category (two levels). Trying to nest a third level is rejected.
 - [ ] **Do:** **Disable/Enable** it. **Expect:** Active toggles.
 - [ ] **Do:** **Delete** a category that has tickets assigned. **Expect:** blocked ("tickets are assigned…"). Delete your empty test category → succeeds.
+
+### 9.2b Companies / Institutions
+- [ ] **Do:** **Companies** tab. **Expect:** a table of client companies (5 seeded — Northwind, Brightsea, etc.) with an **Add** field.
+- [ ] **Do:** **Add** a company (e.g. "Test Institute"). **Expect:** it appears; adding the same name again is rejected as a duplicate.
+- [ ] **Do:** **Edit** its name → **Save changes**. **Expect:** the row updates.
+- [ ] **Do:** **Disable** it. **Expect:** Active = No; it should no longer appear as a suggestion on the ticket forms.
+- [ ] **Do:** **Delete** your test company. **Expect:** gone from the list (existing tickets that used the name keep their text — no orphaning).
 
 ### 9.3 SLA Targets
 - [ ] **Do:** **SLA Targets** tab → change a tier's minutes → **Save SLA targets**. **Expect:** toast "SLA saved".
@@ -210,9 +222,11 @@ Sidebar shows **Administration → Admin Panel** (only for admins).
 - [ ] **Do:** enter an invalid support email → Save. **Expect:** rejected.
 
 ### 9.5 Routing Rules
-- [ ] **Do:** **Routing Rules** tab → **Add** a rule (IF subject contains "refund" THEN set priority high) → Create. **Expect:** appears in the table.
+- [ ] **Do:** **Routing Rules** tab. **Expect:** 3 seeded sample rules (Billing→High, Refund→tag+High, Outage→Urgent).
+- [ ] **Do:** **Add** a rule (IF subject contains "refund" THEN set priority high) → Create. **Expect:** appears in the table.
 - [ ] **Do:** submit a public ticket (`/submit`) whose subject contains "refund". **Expect:** in All Tickets it comes in at **High** priority (rule fired).
-- [ ] **Do:** **Disable** the rule, submit another "refund" ticket. **Expect:** it comes in at the chosen priority (rule did **not** fire).
+- [ ] **Do:** **Edit** a rule → change its condition/action (e.g. IF subject contains "credit" THEN priority urgent) → **Save changes**. **Expect:** toast "Rule updated"; submitting a matching ticket now applies the new action, and the old wording no longer fires. (Enabled/disabled state is preserved across the edit.)
+- [ ] **Do:** **Disable** the rule, submit another matching ticket. **Expect:** it comes in at the chosen priority (rule did **not** fire).
 - [ ] **Do:** **Delete** the rule.
 
 ### 9.6 Backup & Data

@@ -60,6 +60,7 @@ final class PublicActions
             'description'      => mb_substr((string) ($payload['description'] ?? ''), 0, 5000),
             'customer_name'    => mb_substr((string) ($payload['customer_name'] ?? ''), 0, 120),
             'customer_email'   => $email,
+            'company'          => mb_substr((string) ($payload['company'] ?? ''), 0, 120),
             'priority'         => $priority,
             'category_id'      => (string) ($payload['category_id'] ?? ''),
         ], (string) ($payload['_channel'] ?? 'web_form'));

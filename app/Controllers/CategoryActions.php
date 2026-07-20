@@ -78,6 +78,27 @@ final class CategoryActions
         if (isset($payload['active'])) {
             $fields['active'] = !empty($payload['active']) ? 1 : 0;
         }
+        if (array_key_exists('parent_id', $payload)) {
+            $parentId = trim((string) $payload['parent_id']);
+            if ($parentId === '') {
+                $fields['parent_id'] = null;
+            } else {
+                if ($parentId === $id) {
+                    throw new ValidationException('A category cannot be its own parent.');
+                }
+                if (Category::find($parentId) === null) {
+                    throw new ValidationException('Parent category does not exist.');
+                }
+                if (!Category::isTopLevel($parentId)) {
+                    throw new ValidationException('Categories may be nested only two levels deep.');
+                }
+                // Moving a category that itself has children under a parent would make 3 levels.
+                if (Category::childCount($id) > 0) {
+                    throw new ValidationException('This category has sub-categories, so it must stay top-level.');
+                }
+                $fields['parent_id'] = $parentId;
+            }
+        }
         if ($fields !== []) {
             Category::update($id, $fields);
         }

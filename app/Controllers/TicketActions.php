@@ -7,6 +7,7 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Core\ValidationException;
 use App\Models\CannedResponse;
+use App\Models\Company;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Security\MessageVisibility;
@@ -56,6 +57,7 @@ final class TicketActions
             ],
             'avg_response_hours' => Ticket::avgFirstResponseHours(),
             'agents' => User::activeAgents(),
+            'companies' => Company::allActive(),
         ];
     }
 

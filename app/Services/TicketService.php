@@ -36,6 +36,7 @@ final class TicketService
         $description = trim((string) ($input['description'] ?? ''));
         $customerEmail = strtolower(trim((string) ($input['customer_email'] ?? '')));
         $customerName = trim((string) ($input['customer_name'] ?? ''));
+        $company = trim((string) ($input['company'] ?? ''));
         $priority = (string) ($input['priority'] ?? 'normal');
         $categoryId = trim((string) ($input['category_id'] ?? ''));
         $tags = trim((string) ($input['tags'] ?? ''));
@@ -52,6 +53,9 @@ final class TicketService
         }
         if (mb_strlen($customerName) > 120) {
             return self::err('Customer name is too long.');
+        }
+        if (mb_strlen($company) > 120) {
+            return self::err('Company name is too long.');
         }
         if (!in_array($priority, self::PRIORITIES, true)) {
             return self::err('Invalid priority.');
@@ -96,7 +100,7 @@ final class TicketService
 
         // Sequence + insert in one transaction so concurrent creates can't collide.
         $ticketId = Db::transaction(static function () use (
-            $subject, $description, $customerName, $customerEmail, $priority,
+            $subject, $description, $customerName, $customerEmail, $company, $priority,
             $categoryId, $tags, $channel, $assignee, $now, $deadlines, $input
         ): string {
             $tid = Ids::nextTicketId();
@@ -107,6 +111,7 @@ final class TicketService
                 'customer_name'           => $customerName,
                 'customer_email'          => $customerEmail,
                 'customer_user_id'        => $input['customer_user_id'] ?? null,
+                'company'                 => $company,
                 'priority'                => $priority,
                 'status'                  => 'open',
                 'category_id'             => $categoryId === '' ? null : $categoryId,

@@ -45,6 +45,15 @@ $company = $company ?? 'SupportDesk';
             <input type="email" name="customer_email" placeholder="jane@example.com" required maxlength="254">
           </div>
         </div>
+        <div class="field">
+          <label>Company / Institution <span class="pub-opt">(optional)</span></label>
+          <input type="text" name="company" list="pub-company-list" maxlength="120" placeholder="Type or pick your company">
+          <datalist id="pub-company-list">
+            <?php foreach (($companies ?? []) as $co): ?>
+              <option value="<?= e($co['name']) ?>"></option>
+            <?php endforeach; ?>
+          </datalist>
+        </div>
         <div class="pub-row2">
           <div class="field">
             <label>Category</label>

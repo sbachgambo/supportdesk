@@ -397,3 +397,6 @@ tbody td { padding: 14px 20px; font-size: 13px; color: var(--ink); vertical-alig
 .kb-card { cursor: pointer; }
 .kb-card:hover { border-color: var(--accent); }
 .kb-body { white-space: pre-wrap; line-height: 1.65; font-size: 14px; color: var(--ink); margin: 14px 0; max-height: 52vh; overflow: auto; }
+
+/* nested sub-category rows in the admin categories table */
+.cat-child td:first-child { color: var(--ink-soft); padding-left: 22px; }

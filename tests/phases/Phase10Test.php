@@ -136,7 +136,7 @@ $scratchPdo = new PDO(
 );
 BackupService::restoreInto($backupPath, $scratchPdo);
 $restoredTables = $scratchPdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
-T::eq(16, count($restoredTables), 'restore into a scratch DB recreates all 16 tables');
+T::eq(17, count($restoredTables), 'restore into a scratch DB recreates all 17 tables');
 T::ok((int) $scratchPdo->query('SELECT COUNT(*) FROM users')->fetchColumn() >= 4, 'restored data is present (users)');
 $pdo->exec("DROP DATABASE IF EXISTS `{$scratch}`");
 

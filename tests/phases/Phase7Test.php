@@ -146,6 +146,22 @@ T::eq('normal', $submit(), 'DISABLED rule does NOT fire: priority stays normal (
 $call('toggleRule', ['rule_id' => $ruleId, 'enabled' => true]);
 T::eq('high', $submit(), 'rule re-enabled: escalation returns (toggle genuinely gates)');
 
+// EDIT the rule (updateRule): new condition + action must take effect, old must not
+[$st] = $call('updateRule', [
+    'rule_id' => $ruleId,
+    'name' => 'Credit → urgent',
+    'enabled' => true,
+    'conditions' => [['field' => 'subject', 'operator' => 'contains', 'value' => 'credit']],
+    'actions' => [['type' => 'set_priority', 'value' => 'urgent']],
+]);
+T::eq(200, $st, 'updateRule (edit) succeeds');
+$submitCredit = static fn(): string => (string) TicketService::create(
+    ['subject' => 'Please apply a credit', 'description' => 'body', 'customer_email' => 'c@example.com', 'priority' => 'normal'],
+    'web_form'
+)['ticket']['priority'];
+T::eq('urgent', $submitCredit(), 'edited rule fires with the new condition + action');
+T::eq('normal', $submit(), 'the old condition no longer matches after the edit');
+
 // ── ticket-data reset (§3, §4, §10.11, §18) ──────────────────────────────────
 T::suite('Phase 7: ticket-data reset');
 $auditBefore = (int) Db::scalar('SELECT COUNT(*) FROM audit_log');

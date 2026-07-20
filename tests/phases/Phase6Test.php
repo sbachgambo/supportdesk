@@ -24,6 +24,7 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Models\Attachment;
 use App\Models\Category;
+use App\Models\Company;
 use App\Models\User;
 use App\Security\Rbac;
 use App\Security\Upload;
@@ -212,6 +213,48 @@ $orphanId = $body['data']['category_id'];
 [$st, $body] = $catCall('deleteCategory', ['category_id' => $orphanId]);
 T::eq(200, $st, 'unreferenced category deletes successfully');
 T::ok(Category::find($orphanId) === null, 'category is gone after delete');
+
+// reparent (sub-category) support via updateCategory, with the two-level guard
+[$st, $body] = $catCall('createCategory', ['name' => 'TopA', 'color' => '#222222']);
+$topA = $body['data']['category_id'];
+[$st, $body] = $catCall('createCategory', ['name' => 'Movable', 'color' => '#333333']);
+$movable = $body['data']['category_id'];
+[$st] = $catCall('updateCategory', ['category_id' => $movable, 'parent_id' => $topA]);
+T::eq(200, $st, 'a top-level category can be reparented as a sub-category');
+T::eq($topA, (string) Category::find($movable)['parent_id'], 'parent_id persisted');
+[$st] = $catCall('updateCategory', ['category_id' => $movable, 'parent_id' => $movable]);
+T::eq(422, $st, 'a category cannot be its own parent');
+[$st, $body] = $catCall('createCategory', ['name' => 'Deep', 'color' => '#444444', 'parent_id' => $topA]);
+$deep = $body['data']['category_id'];
+[$st] = $catCall('updateCategory', ['category_id' => $topA, 'parent_id' => $movable]);
+T::eq(422, $st, 'moving a category that has sub-categories under a parent is rejected (max two levels)');
+[$st] = $catCall('updateCategory', ['category_id' => $movable, 'parent_id' => '']);
+T::eq(200, $st, 'a sub-category can be promoted back to top level');
+T::ok(Category::find($movable)['parent_id'] === null, 'parent cleared on promotion');
+
+// ── companies: admin-managed suggestion list (§3) ────────────────────────────
+T::suite('Phase 6: companies admin');
+[$st, $body] = $catCall('createCompany', ['name' => 'Acme Institute']);
+T::eq(200, $st, 'createCompany succeeds');
+$coId = $body['data']['company_id'] ?? '';
+T::ok($coId !== '', 'company id returned');
+[$st, $body] = $catCall('createCompany', ['name' => 'Acme Institute']);
+T::eq(422, $st, 'duplicate company name rejected');
+[$st, $body] = $catCall('updateCompany', ['company_id' => $coId, 'name' => 'Acme Institute Ltd']);
+T::eq(200, $st, 'rename company succeeds');
+T::eq('Acme Institute Ltd', (string) Company::find($coId)['name'], 'company name persisted');
+[$st, $body] = $catCall('updateCompany', ['company_id' => $coId, 'active' => 0]);
+T::eq(0, (int) Company::find($coId)['active'], 'company deactivated');
+[$st, $body] = $catCall('deleteCompany', ['company_id' => $coId]);
+T::eq(200, $st, 'delete company succeeds');
+T::ok(Company::find($coId) === null, 'company gone after delete');
+
+// company admin is admin-only: an agent is denied
+Session::destroy();
+$agentUser = User::findByEmail('agent1@p3a-support.com.ng');
+Session::start((int) $agentUser['id'], (string) $agentUser['email'], 'agent', '203.0.113.42', 'ua', true);
+[$st] = $catCall('listCompanies', []);
+T::eq(403, $st, 'agent blocked from company admin (admin-only)');
 
 // ── cleanup ──────────────────────────────────────────────────────────────────
 foreach (array_unique($cleanup) as $f) {
