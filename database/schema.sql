@@ -65,6 +65,17 @@ CREATE TABLE organizations (
   INDEX idx_org_active (active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Products / Projects. A client picks a product/project on the ticket form (a shared,
+-- admin-managed list); stored on the ticket for filtering and reporting.
+CREATE TABLE products (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id VARCHAR(16) UNIQUE NOT NULL,             -- "PRD-0001"
+  name       VARCHAR(120) NOT NULL,
+  active     TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  INDEX idx_prod_active (active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ── tickets ────────────────────────────────────────────────
 CREATE TABLE tickets (
   id                      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -78,6 +89,7 @@ CREATE TABLE tickets (
   priority                ENUM('urgent','high','normal','low') NOT NULL DEFAULT 'normal',
   status                  ENUM('open','pending','resolved','closed') NOT NULL DEFAULT 'open',
   category_id             VARCHAR(16) NULL,
+  product_id              VARCHAR(16) NULL,                -- client's product/project; NULL = none
   tags                    VARCHAR(255) NOT NULL DEFAULT '',
   channel                 ENUM('web_form','agent','email','status_page','widget') NOT NULL,
   assigned_to             VARCHAR(254) NULL,               -- agent email; NULL = unassigned
@@ -92,9 +104,11 @@ CREATE TABLE tickets (
   csat_rating             TINYINT UNSIGNED NULL,
   csat_comment            VARCHAR(500) NULL,
   FOREIGN KEY (category_id)      REFERENCES categories(category_id) ON DELETE SET NULL,
+  FOREIGN KEY (product_id)       REFERENCES products(product_id) ON DELETE SET NULL,
   FOREIGN KEY (customer_user_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (organization_id)  REFERENCES organizations(organization_id) ON DELETE SET NULL,
   INDEX idx_tk_org            (organization_id, status),
+  INDEX idx_tk_product        (product_id),
   INDEX idx_tk_status_updated (status, updated_at),
   INDEX idx_tk_assigned       (assigned_to, status),
   INDEX idx_tk_customer_email (customer_email),

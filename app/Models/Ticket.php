@@ -20,7 +20,7 @@ final class Ticket
     /** Columns a caller is allowed to set on insert (mass-assignment allowlist, §10.5). */
     private const INSERTABLE = [
         'ticket_id', 'subject', 'description', 'customer_name', 'customer_email',
-        'customer_user_id', 'organization_id', 'priority', 'status', 'category_id', 'tags', 'channel',
+        'customer_user_id', 'organization_id', 'priority', 'status', 'category_id', 'product_id', 'tags', 'channel',
         'assigned_to', 'created_at', 'updated_at', 'sla_response_deadline',
         'sla_resolution_deadline', 'sla_response_status', 'sla_resolution_status',
     ];
@@ -76,7 +76,7 @@ final class Ticket
         $params[':offset'] = (max(1, $page) - 1) * $perPage;
         $rows = Db::queryAll(
             "SELECT ticket_id, subject, customer_name, customer_email, organization_id, priority, status,
-                    assigned_to, category_id, created_at, updated_at,
+                    assigned_to, category_id, product_id, created_at, updated_at,
                     sla_response_status, sla_resolution_status, first_response_at, resolved_at
              FROM tickets
              WHERE (:status_a = '' OR status = :status_b)
@@ -103,7 +103,7 @@ final class Ticket
         return match ($view) {
             'mine' => Db::queryAll(
                 "SELECT ticket_id, subject, customer_name, customer_email, organization_id, priority, status,
-                        assigned_to, category_id, created_at, updated_at,
+                        assigned_to, category_id, product_id, created_at, updated_at,
                         sla_response_status, sla_resolution_status, first_response_at, resolved_at
                  FROM tickets
                  WHERE assigned_to = :email AND (:all_orgs = 1 OR organization_id <=> :org)
@@ -112,7 +112,7 @@ final class Ticket
             ),
             'breaches' => Db::queryAll(
                 "SELECT ticket_id, subject, customer_name, customer_email, organization_id, priority, status,
-                        assigned_to, category_id, created_at, updated_at,
+                        assigned_to, category_id, product_id, created_at, updated_at,
                         sla_response_status, sla_resolution_status, first_response_at, resolved_at
                  FROM tickets
                  WHERE (sla_response_status = 'breached' OR sla_resolution_status = 'breached')
@@ -122,7 +122,7 @@ final class Ticket
             ),
             'resolved' => Db::queryAll(
                 "SELECT ticket_id, subject, customer_name, customer_email, organization_id, priority, status,
-                        assigned_to, category_id, created_at, updated_at,
+                        assigned_to, category_id, product_id, created_at, updated_at,
                         sla_response_status, sla_resolution_status, first_response_at, resolved_at
                  FROM tickets
                  WHERE status IN ('resolved','closed') AND (:all_orgs = 1 OR organization_id <=> :org)
@@ -131,7 +131,7 @@ final class Ticket
             ),
             default => Db::queryAll(
                 "SELECT ticket_id, subject, customer_name, customer_email, organization_id, priority, status,
-                        assigned_to, category_id, created_at, updated_at,
+                        assigned_to, category_id, product_id, created_at, updated_at,
                         sla_response_status, sla_resolution_status, first_response_at, resolved_at
                  FROM tickets
                  WHERE (:all_orgs = 1 OR organization_id <=> :org)

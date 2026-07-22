@@ -42,6 +42,20 @@ final class PublicActions
             throw new ValidationException('A valid email address is required.');
         }
 
+        // All public-form fields are compulsory (client-side `required` + this server guard).
+        $name = trim((string) ($payload['customer_name'] ?? ''));
+        if ($name === '') {
+            throw new ValidationException('Your name is required.');
+        }
+        $categoryId = trim((string) ($payload['category_id'] ?? ''));
+        if ($categoryId === '') {
+            throw new ValidationException('Please choose a category.');
+        }
+        $productId = trim((string) ($payload['product_id'] ?? ''));
+        if ($productId === '') {
+            throw new ValidationException('Please choose a product / project.');
+        }
+
         // Rate limits: per-email and a global ceiling (§3, §10.6).
         $perEmail = Config::int('RATE_SUBMIT_PER_HOUR', 5);
         $global = Config::int('RATE_SUBMIT_GLOBAL_PER_HOUR', 30);
@@ -64,11 +78,12 @@ final class PublicActions
         $result = TicketService::create([
             'subject'          => mb_substr((string) ($payload['subject'] ?? ''), 0, 200),
             'description'      => mb_substr((string) ($payload['description'] ?? ''), 0, 5000),
-            'customer_name'    => mb_substr((string) ($payload['customer_name'] ?? ''), 0, 120),
+            'customer_name'    => mb_substr($name, 0, 120),
             'customer_email'   => $email,
             'organization_id'  => $orgId,
             'priority'         => $priority,
-            'category_id'      => (string) ($payload['category_id'] ?? ''),
+            'category_id'      => $categoryId,
+            'product_id'       => $productId,
         ], (string) ($payload['_channel'] ?? 'web_form'));
 
         if (($result['ok'] ?? false) !== true) {

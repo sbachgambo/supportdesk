@@ -269,6 +269,10 @@ T::eq(422, $st, 'agent cannot mutate a ticket outside their organization');
 [$st, $body] = $catCall('getTicket', ['ticket_id' => $tA]);
 T::eq(200, $st, 'agent CAN open a ticket in their own organization');
 
+// the ownership gate (uploads/downloads/'owner' actions) is org-scoped for staff too
+T::ok(Rbac::ownsTicket($tA), 'staff ownership gate: agent covers a ticket in their own org');
+T::ok(!Rbac::ownsTicket($tB), 'staff ownership gate: agent DENIED on another org\'s ticket (upload/download path)');
+
 // an admin sees across organizations
 Session::destroy();
 Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113.42', 'ua', true);

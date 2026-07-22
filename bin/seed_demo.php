@@ -20,6 +20,7 @@ use App\Core\Config;
 use App\Core\Db;
 use App\Models\KbArticle;
 use App\Models\Organization;
+use App\Models\Product;
 use App\Models\RoutingRule;
 use App\Models\User;
 use App\Services\TicketService;
@@ -50,6 +51,19 @@ $orgFor = static function (int $i) use ($orgIds): string {
     return $slot < count($orgIds) && $slot !== 2 ? $orgIds[$slot] : '';
 };
 
+// ── Products / Projects (shared list; only if none exist) ───────────────────
+$prodIds = [];
+if ((int) Db::scalar('SELECT COUNT(*) FROM products') === 0) {
+    foreach (['Helpdesk Portal', 'Mobile App', 'Billing System', 'Website'] as $name) {
+        $prodIds[] = Product::create(['name' => $name, 'active' => 1]);
+    }
+} else {
+    $prodIds = array_map(static fn(array $p): string => (string) $p['product_id'], Product::allActive());
+}
+$prodFor = static function (int $i) use ($prodIds): string {
+    return $prodIds === [] ? '' : $prodIds[$i % count($prodIds)];
+};
+
 $agent = ['name' => 'Agent One', 'email' => 'agent1@p3a-support.com.ng', 'role' => 'agent'];
 
 $samples = [
@@ -68,7 +82,7 @@ foreach ($samples as $i => [$subject, $desc, $email, $priority, $followup]) {
     $r = TicketService::create([
         'subject' => $subject, 'description' => $desc, 'customer_email' => $email,
         'customer_name' => explode('@', $email)[0], 'priority' => $priority,
-        'organization_id' => $orgFor($i),
+        'organization_id' => $orgFor($i), 'product_id' => $prodFor($i),
     ], 'web_form');
     if (($r['ok'] ?? false) !== true) {
         continue;

@@ -31,10 +31,21 @@
         return el ? el.value : '';
     }
 
+    var manage = root.getAttribute('data-manage') === '1';
+
     async function init() {
         var res = await call('getMfaStatus');
-        if (res && res.ok && res.data.verified) { location.href = '/dashboard'; return; }
-        if (res && res.ok && res.data.enabled) {
+        if (manage && res && res.ok) {
+            // Self-service management (staff): enrolled → status + disable; not
+            // enrolled → run the normal enrolment flow below.
+            if (res.data.enabled) {
+                var bc = root.querySelector('[data-bind="mfa-backup-count"]');
+                if (bc) { bc.textContent = String(res.data.backup_codes); }
+                show('mfa-manage', true);
+                return;
+            }
+        } else if (res && res.ok && res.data.verified) { location.href = '/dashboard'; return; }
+        if (!manage && res && res.ok && res.data.enabled) {
             show('mfa-challenge', true);
         } else {
             var enroll = await call('enrollTotp');
@@ -48,6 +59,14 @@
             }
         }
     }
+
+    root.addEventListener('click', async function (e) {
+        var t = e.target.closest('[data-action="mfa-disable"]');
+        if (!t) { return; }
+        if (!window.confirm('Turn off two-factor authentication for your account?')) { return; }
+        var res = await call('disableTotp');
+        if (res && res.ok) { location.href = '/dashboard'; } else { msg((res && res.error) || 'Could not disable.', true); }
+    });
 
     root.addEventListener('submit', async function (e) {
         var action = e.target.getAttribute('data-action');

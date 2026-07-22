@@ -9,6 +9,7 @@ use App\Core\ValidationException;
 use App\Models\CannedResponse;
 use App\Models\Category;
 use App\Models\Organization;
+use App\Models\Product;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Security\MessageVisibility;
@@ -87,6 +88,7 @@ final class TicketActions
             'agents' => User::activeAgents(),
             'organizations' => Organization::allActive(),
             'categories' => Category::allActive(),
+            'products' => Product::allActive(),
         ];
     }
 
@@ -132,6 +134,12 @@ final class TicketActions
             $orgName = (string) ($org['name'] ?? '');
         }
         $ticket['organization_name'] = $orgName;
+        $productName = '';
+        if (($ticket['product_id'] ?? null) !== null) {
+            $product = Product::find((string) $ticket['product_id']);
+            $productName = (string) ($product['name'] ?? '');
+        }
+        $ticket['product_name'] = $productName;
         $role = (string) Session::role();
         return [
             'ticket'      => $ticket,

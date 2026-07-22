@@ -30,7 +30,7 @@ final class AdminActions
     private const CONFIG_ALLOWLIST = [
         'company_name', 'support_email', 'portal_title', 'portal_tagline',
         'brand_color', 'ticket_prefix', 'business_hours_start', 'business_hours_end', 'business_days',
-        'require_admin_mfa',
+        'require_admin_mfa', 'auto_close_days', 'sla_business_hours_only',
     ];
 
     // ── users / agents CRUD ──────────────────────────────────────────────────
@@ -263,8 +263,21 @@ final class AdminActions
             if ($key === 'ticket_prefix' && !preg_match('/^[A-Z]{2,6}$/', $value)) {
                 throw new ValidationException('Ticket prefix must be 2–6 uppercase letters.');
             }
-            if ($key === 'require_admin_mfa') {
+            if ($key === 'require_admin_mfa' || $key === 'sla_business_hours_only') {
                 $value = ($value !== '' && $value !== '0') ? '1' : '0'; // normalise to a strict flag
+            }
+            if ($key === 'auto_close_days') {
+                if ($value !== '' && !preg_match('/^\d{1,3}$/', $value)) {
+                    throw new ValidationException('Auto-close days must be a whole number (0 disables auto-close).');
+                }
+                $value = (string) (int) ($value === '' ? 7 : $value); // empty → default 7, never silently off
+            }
+            if (($key === 'business_hours_start' || $key === 'business_hours_end')
+                && $value !== '' && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $value)) {
+                throw new ValidationException('Business hours must be HH:MM (24-hour), e.g. 08:00.');
+            }
+            if ($key === 'business_days' && $value !== '' && !preg_match('/^[1-7](,[1-7])*$/', $value)) {
+                throw new ValidationException('Business days must be a comma list of 1–7 (Mon=1 … Sun=7).');
             }
             $updates[$key] = mb_substr($value, 0, 255);
         }
@@ -274,6 +287,23 @@ final class AdminActions
         }
         Audit::log((string) Session::email(), 'config_update', '', implode(',', array_keys($updates)));
         return ['ok' => true, 'updated' => array_keys($updates)];
+    }
+
+    // ── audit log viewer (§10.11) ────────────────────────────────────────────
+    public function listAuditLog(array $payload, Request $request): array
+    {
+        $actor = mb_substr(trim((string) ($payload['actor'] ?? '')), 0, 254);
+        $action = mb_substr(trim((string) ($payload['action'] ?? '')), 0, 60);
+        $page = max(1, (int) ($payload['page'] ?? 1));
+        $result = Audit::paged($actor, $action, $page, 25);
+        $out = $result + ['page' => $page, 'per_page' => 25, 'actions' => Audit::actionNames()];
+        // Chain verification is O(n) over the whole log — run only when asked.
+        if (!empty($payload['verify'])) {
+            $bad = Audit::verifyChain();
+            $out['chain_ok'] = $bad === null;
+            $out['chain_bad_id'] = $bad;
+        }
+        return $out;
     }
 
     // ── backup + reset ───────────────────────────────────────────────────────
@@ -286,6 +316,23 @@ final class AdminActions
         }
         Audit::log((string) Session::email(), 'backup_run', '', basename($path));
         return ['ok' => true, 'file' => basename($path)];
+    }
+
+    /** List backup files for the admin panel (download happens via /admin/backup/download). */
+    public function listBackups(array $payload, Request $request): array
+    {
+        $files = [];
+        foreach (glob(BackupService::backupDir() . '/backup_*') ?: [] as $path) {
+            if (is_file($path)) {
+                $files[] = [
+                    'name'        => basename($path),
+                    'size_bytes'  => (int) filesize($path),
+                    'modified_at' => gmdate('Y-m-d H:i:s', (int) filemtime($path)),
+                ];
+            }
+        }
+        usort($files, static fn(array $a, array $b): int => strcmp($b['name'], $a['name'])); // newest first
+        return ['backups' => $files];
     }
 
     public function resetTicketData(array $payload, Request $request): array

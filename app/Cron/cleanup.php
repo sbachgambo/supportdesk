@@ -10,15 +10,18 @@ if (PHP_SAPI !== 'cli') {
 
 require dirname(__DIR__) . '/bootstrap.php';
 
+use App\Services\AutoCloseService;
 use App\Services\CleanupService;
 
 $c = CleanupService::run();
+$closed = AutoCloseService::run();
 fwrite(STDOUT, sprintf(
-    "[%s] cleanup: rate_limits=%d sessions=%d reset_tokens=%d notifications=%d logs=%d\n",
+    "[%s] cleanup: rate_limits=%d sessions=%d reset_tokens=%d notifications=%d logs=%d auto_closed=%d\n",
     gmdate('c'),
     $c['rate_limits'],
     $c['sessions'],
     $c['reset_tokens'],
     $c['notifications'],
-    $c['logs']
+    $c['logs'],
+    $closed
 ));

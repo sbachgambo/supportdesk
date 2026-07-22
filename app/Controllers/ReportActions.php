@@ -38,4 +38,20 @@ final class ReportActions
         $days = ReportService::normalizePeriod((int) ($payload['period'] ?? 30));
         return ['period' => $days, 'agents' => ReportService::agentPerformance($days, $allOrgs, $orgId)];
     }
+
+    /** Grouped breakdown (custom report): tickets per product/category/agent/status/priority. */
+    public function getGroupedReport(array $payload, Request $request): array
+    {
+        [$allOrgs, $orgId] = $this->scope();
+        $dimension = (string) ($payload['dimension'] ?? 'product');
+        if (!in_array($dimension, ReportService::GROUP_DIMENSIONS, true)) {
+            $dimension = 'product';
+        }
+        $days = ReportService::normalizePeriod((int) ($payload['period'] ?? 30));
+        return [
+            'dimension' => $dimension,
+            'period'    => $days,
+            'groups'    => ReportService::grouped($dimension, $days, $allOrgs, $orgId),
+        ];
+    }
 }

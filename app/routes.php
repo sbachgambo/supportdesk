@@ -51,6 +51,34 @@ $router->get('/admin/rules', static function (Request $request): Response {
     ], 'app'));
 });
 
+// Backup download (admin+MFA). GET streams one backup file as an attachment so admins
+// can keep copies OFF the server. The filename must match the exact generated shape —
+// never a path, so no traversal is possible — and every download is audited.
+$router->get('/admin/backup/download', static function (Request $request): Response {
+    if (Session::current() === null) {
+        return redirect('login');
+    }
+    if (!Session::isMfaVerified()) {
+        return redirect('mfa');
+    }
+    if (Session::role() !== 'admin') {
+        return redirect('dashboard');
+    }
+    $name = (string) ($request->query('f') ?? '');
+    if (!preg_match('/^backup_\d{8}_\d{6}_[0-9a-f]{6}\.sql(\.gz(\.enc)?)?$/', $name)) {
+        return Response::make('Not found', 404, 'text/plain; charset=utf-8');
+    }
+    $path = \App\Services\BackupService::backupDir() . '/' . $name;
+    if (!is_file($path)) {
+        return Response::make('Not found', 404, 'text/plain; charset=utf-8');
+    }
+    \App\Security\Audit::log((string) Session::email(), 'backup_download', $name);
+    return Response::make((string) file_get_contents($path), 200, 'application/octet-stream')
+        ->withHeader('Content-Disposition', 'attachment; filename="' . $name . '"')
+        ->withHeader('X-Content-Type-Options', 'nosniff')
+        ->withHeader('Content-Length', (string) filesize($path));
+});
+
 // Reports dashboard page (agent+).
 $router->get('/reports', static function (Request $request): Response {
     if (Session::current() === null) {
@@ -90,18 +118,22 @@ $router->post('/forgot', [$auth, 'forgot']);
 $router->get('/reset', [$auth, 'showReset']);
 $router->post('/reset', [$auth, 'reset']);
 
-// MFA challenge / enrolment page (D8). Reachable by an unverified session.
+// MFA challenge / enrolment page (D8). Reachable by an unverified session — and, with
+// ?manage=1, by verified STAFF so agents/org admins can self-enrol or disable 2FA.
 $router->get('/mfa', static function (Request $request): Response {
     if (Session::current() === null) {
         return redirect('login');
     }
-    if (Session::isMfaVerified()) {
+    $manage = $request->query('manage') === '1'
+        && in_array((string) Session::role(), ['admin', 'org_admin', 'agent'], true);
+    if (Session::isMfaVerified() && !$manage) {
         return redirect('dashboard');
     }
     return Response::html(View::render('mfa', [
         'title'      => 'Two-factor verification — P3A Support',
         'company'    => \App\Models\AppConfig::get('company_name', 'SupportDesk'),
         'csrf'       => \App\Core\Csrf::token(),
+        'manage'     => $manage,
         'pageScript' => 'mfa.js',
     ], 'bare'));
 });
@@ -138,8 +170,35 @@ $router->get('/submit', static function (Request $request): Response {
         'csrf'          => \App\Core\Csrf::publicToken('submitTicket'),
         'categories'    => \App\Models\Category::allActive(),
         'organizations' => \App\Models\Organization::allActive(),
+        'products'      => \App\Models\Product::allActive(),
         'widget'        => $widget,
         'pageScript'    => 'public.js',
+    ], 'bare'));
+});
+
+// Public Help Centre: browsable PUBLIC knowledge-base articles. Server-rendered
+// (no JSON, no CSRF needed — read-only); internal articles are never reachable here.
+$router->get('/help', static function (Request $request): Response {
+    $company = \App\Models\AppConfig::get('company_name', 'P3A Support');
+    $q = mb_substr(trim((string) ($request->query('q') ?? '')), 0, 100);
+    $articleId = trim((string) ($request->query('a') ?? ''));
+
+    $article = null;
+    if ($articleId !== '') {
+        $found = \App\Models\KbArticle::find($articleId);
+        if ($found !== null && $found['visibility'] === 'public') {
+            \App\Models\KbArticle::incrementViews((string) $found['article_id']);
+            $article = $found;
+        }
+    }
+
+    return Response::html(View::render('help', [
+        'title'      => 'Help Centre — ' . $company,
+        'company'    => $company,
+        'q'          => $q,
+        'article'    => $article,
+        'articles'   => $article === null ? \App\Models\KbArticle::listPublic($q) : [],
+        'pageScript' => 'public.js',
     ], 'bare'));
 });
 

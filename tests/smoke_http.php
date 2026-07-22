@@ -150,6 +150,13 @@ try {
     [$st] = $get("$base/status");
     T::eq(200, $st, '/status → 200');
 
+    // Help Centre: public, browsable, and the backup download is auth-gated
+    [$st, , $helpBody] = $get("$base/help");
+    T::eq(200, $st, '/help → 200');
+    T::ok(str_contains($helpBody, 'Help Centre'), '/help renders the Help Centre');
+    [$st, $dlHdr] = $get("$base/admin/backup/download?f=backup_20260101_000000_abcdef.sql");
+    T::ok(in_array($st, [301, 302], true) && stripos($dlHdr, 'login') !== false, 'unauthenticated backup download → redirect to /login');
+
     // widget loader: JS content type, embeddable header profile
     [$st, $whdr, $wbody] = $get("$base/widget.js");
     T::eq(200, $st, '/widget.js → 200');

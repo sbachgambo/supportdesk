@@ -153,9 +153,9 @@ $pub = static function (string $action, array $payload) use ($server): int {
     return Dispatch::handle($req)->status();
 };
 for ($i = 0; $i < 5; $i++) {
-    $pub('submitTicket', ['customer_email' => 'flood@othercorp.com', 'subject' => "s{$i}", 'description' => 'd']);
+    $pub('submitTicket', ['customer_name' => 'Flo', 'customer_email' => 'flood@othercorp.com', 'subject' => "s{$i}", 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
 }
-T::eq(422, $pub('submitTicket', ['customer_email' => 'flood@othercorp.com', 'subject' => 's6', 'description' => 'd']), '6th submit/hour/email refused');
+T::eq(422, $pub('submitTicket', ['customer_name' => 'Flo', 'customer_email' => 'flood@othercorp.com', 'subject' => 's6', 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']), '6th submit/hour/email refused');
 
 // ── Enumeration on status lookup (byte-identical) ────────────────────────────
 T::suite('SecuritySuite: status enumeration');

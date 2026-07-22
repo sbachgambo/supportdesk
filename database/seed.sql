@@ -48,6 +48,10 @@ INSERT INTO categories (category_id, name, description, color, active, parent_id
   ('CAT-004', 'Login Issues', 'Cannot sign in',        '#F04438', 1, 'CAT-003', UTC_TIMESTAMP()),
   ('CAT-005', 'Bug Report',   'Something is broken',    '#F04438', 1, 'CAT-003', UTC_TIMESTAMP());
 
+-- ── products / projects (a default so the required form dropdown is never empty) ──
+INSERT INTO products (product_id, name, active, created_at) VALUES
+  ('PRD-0001', 'General', 1, UTC_TIMESTAMP());
+
 -- ── canned responses (demo; {customerName}/{agentName}/{ticketId} substituted at use — §3) ──
 INSERT INTO canned_responses (response_id, title, body, category, active, created_by, created_at) VALUES
   ('CAN-001', 'Acknowledgement',

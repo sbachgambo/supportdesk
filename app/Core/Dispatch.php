@@ -65,6 +65,7 @@ final class Dispatch
         // Reports (Phase 8) — staff.
         'getReports'          => 'agent',
         'getAgentPerformance' => 'agent',
+        'getGroupedReport'    => 'agent',
         // Customer portal (Phase 6) — ownership-scoped.
         'getMyTickets'    => 'customer',
         'getMyTicket'     => 'owner',
@@ -80,6 +81,11 @@ final class Dispatch
         'createOrganization'  => 'admin',
         'updateOrganization'  => 'admin',
         'deleteOrganization'  => 'admin',
+        // Products / Projects admin.
+        'listProducts'    => 'admin',
+        'createProduct'   => 'admin',
+        'updateProduct'   => 'admin',
+        'deleteProduct'   => 'admin',
         // User management — org_admin (scoped to their own org's agents in the handler)
         // or system admin (unscoped). The handlers enforce the org boundary for org_admin.
         'listUsers'          => 'org_admin',
@@ -92,7 +98,9 @@ final class Dispatch
         // System configuration — system admin only.
         'updateSlaTargets'   => 'admin',
         'updateConfig'       => 'admin',
+        'listAuditLog'       => 'admin',
         'runBackup'          => 'admin',
+        'listBackups'        => 'admin',
         'resetTicketData'    => 'admin',
         'listRules'          => 'admin',
         'createRule'         => 'admin',
@@ -216,6 +224,7 @@ final class Dispatch
         $customer = new \App\Controllers\CustomerActions();
         $categories = new \App\Controllers\CategoryActions();
         $organizations = new \App\Controllers\OrganizationActions();
+        $products = new \App\Controllers\ProductActions();
         $admin = new \App\Controllers\AdminActions();
         $rules = new \App\Controllers\RuleActions();
         $reports = new \App\Controllers\ReportActions();
@@ -256,6 +265,7 @@ final class Dispatch
             // Reports (Phase 8)
             'getReports'           => [$reports, 'getReports'],
             'getAgentPerformance'  => [$reports, 'getAgentPerformance'],
+            'getGroupedReport'     => [$reports, 'getGroupedReport'],
             // Customer portal (Phase 6)
             'getMyTickets'         => [$customer, 'getMyTickets'],
             'getMyTicket'          => [$customer, 'getMyTicket'],
@@ -270,6 +280,10 @@ final class Dispatch
             'createOrganization'   => [$organizations, 'createOrganization'],
             'updateOrganization'   => [$organizations, 'updateOrganization'],
             'deleteOrganization'   => [$organizations, 'deleteOrganization'],
+            'listProducts'         => [$products, 'listProducts'],
+            'createProduct'        => [$products, 'createProduct'],
+            'updateProduct'        => [$products, 'updateProduct'],
+            'deleteProduct'        => [$products, 'deleteProduct'],
             // Admin panel (Phase 7)
             'listUsers'            => [$admin, 'listUsers'],
             'createUser'           => [$admin, 'createUser'],
@@ -280,7 +294,9 @@ final class Dispatch
             'adminResetPassword'   => [$admin, 'adminResetPassword'],
             'updateSlaTargets'     => [$admin, 'updateSlaTargets'],
             'updateConfig'         => [$admin, 'updateConfig'],
+            'listAuditLog'         => [$admin, 'listAuditLog'],
             'runBackup'            => [$admin, 'runBackup'],
+            'listBackups'          => [$admin, 'listBackups'],
             'resetTicketData'      => [$admin, 'resetTicketData'],
             'listRules'            => [$rules, 'listRules'],
             'createRule'           => [$rules, 'createRule'],

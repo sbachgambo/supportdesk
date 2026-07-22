@@ -18,13 +18,16 @@ require $root . '/vendor/autoload.php';
 
 use App\Core\Config;
 use App\Core\Db;
+use App\Models\AppConfig;
 use App\Models\Message;
 use App\Models\Ticket;
+use App\Services\AutoCloseService;
 use App\Services\BackupService;
 use App\Services\CleanupService;
 use App\Services\DigestService;
 use App\Services\InboundMail;
 use App\Services\Mailer;
+use App\Services\SlaCalculator;
 use App\Services\SlaMonitor;
 use App\Services\TicketService;
 
@@ -136,7 +139,7 @@ $scratchPdo = new PDO(
 );
 BackupService::restoreInto($backupPath, $scratchPdo);
 $restoredTables = $scratchPdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
-T::eq(17, count($restoredTables), 'restore into a scratch DB recreates all 17 tables');
+T::eq(18, count($restoredTables), 'restore into a scratch DB recreates all 18 tables');
 T::ok((int) $scratchPdo->query('SELECT COUNT(*) FROM users')->fetchColumn() >= 4, 'restored data is present (users)');
 $pdo->exec("DROP DATABASE IF EXISTS `{$scratch}`");
 
@@ -156,6 +159,56 @@ $d = DigestService::gather();
 T::ok(array_key_exists('new_24h', $d) && array_key_exists('breaches', $d), 'digest gathers the expected figures');
 $sent = DigestService::run();
 T::ok($sent >= 1, 'digest sent to at least one active admin (pretend transport)');
+
+// ── Customer emails (#1): receipt on create, notification on reply ───────────
+T::suite('Phase 10: customer emails');
+Db::query('DELETE FROM mail_log');
+$agentActor = ['name' => 'Agent', 'email' => 'agent1@p3a-support.com.ng', 'role' => 'agent'];
+$ce = TicketService::create(['subject' => 'Email me', 'description' => 'd', 'customer_email' => 'cust@othercorp.com', 'customer_name' => 'Cus Tomer', 'priority' => 'normal'], 'web_form');
+$ceId = (string) $ce['ticket']['ticket_id'];
+$row = Db::queryOne("SELECT status FROM mail_log WHERE recipient = 'cust@othercorp.com' AND subject LIKE 'We received your request%' ORDER BY id DESC LIMIT 1");
+T::ok($row !== null && $row['status'] === 'sent', 'submission receipt emailed to the customer (reference id)');
+TicketService::reply($ceId, 'We are on it', $agentActor);
+$row = Db::queryOne("SELECT status FROM mail_log WHERE recipient = 'cust@othercorp.com' AND subject LIKE 'New reply on your request%' ORDER BY id DESC LIMIT 1");
+T::ok($row !== null && $row['status'] === 'sent', 'agent reply notifies the customer by email');
+$mailsBefore = (int) Db::scalar("SELECT COUNT(*) FROM mail_log WHERE recipient = 'cust@othercorp.com'");
+TicketService::addInternalNote($ceId, 'secret note', $agentActor);
+T::eq($mailsBefore, (int) Db::scalar("SELECT COUNT(*) FROM mail_log WHERE recipient = 'cust@othercorp.com'"), 'internal note sends NO customer email');
+
+// ── Auto-close (#2): resolved >N days → closed + satisfaction request ─────────
+T::suite('Phase 10: auto-close + satisfaction request');
+$ac = TicketService::create(['subject' => 'Close me', 'description' => 'd', 'customer_email' => 'close@othercorp.com', 'customer_name' => 'C', 'priority' => 'normal'], 'web_form');
+$acId = (string) $ac['ticket']['ticket_id'];
+TicketService::changeStatus($acId, 'resolved', $agentActor);
+Db::query('UPDATE tickets SET resolved_at = :r WHERE ticket_id = :t', [':r' => gmdate('Y-m-d H:i:s', time() - 8 * 86400), ':t' => $acId]);
+$closed = AutoCloseService::run(); // auto_close_days defaults to 7
+T::ok($closed >= 1, 'auto-close closes tickets resolved more than 7 days ago');
+T::eq('closed', (string) Db::scalar('SELECT status FROM tickets WHERE ticket_id = :t', [':t' => $acId]), 'the stale resolved ticket is now closed');
+T::ok(Db::queryOne("SELECT 1 FROM mail_log WHERE recipient = 'close@othercorp.com' AND subject LIKE 'How did we do%'") !== null, 'unrated ticket gets a satisfaction-request email');
+T::eq(0, AutoCloseService::run(), 'second auto-close run is a no-op (idempotent)');
+
+// ── Business-hours SLA clock (#3) ────────────────────────────────────────────
+T::suite('Phase 10: business-hours SLA clock');
+AppConfig::set('business_hours_start', '09:00');
+AppConfig::set('business_hours_end', '17:00');
+AppConfig::set('business_days', '1,2,3,4,5');
+$tz = new DateTimeZone(Config::string('APP_TIMEZONE', 'UTC'));
+$utcTz = new DateTimeZone('UTC');
+// Friday 16:30 local + 120 business minutes = 30 min Friday + 90 min Monday → Monday 10:30
+$fri = (new DateTime('2026-07-24 16:30:00', $tz))->setTimezone($utcTz)->format('Y-m-d H:i:s');
+$expMon = (new DateTime('2026-07-27 10:30:00', $tz))->setTimezone($utcTz)->format('Y-m-d H:i:s');
+T::eq($expMon, SlaCalculator::addBusinessMinutes($fri, 120), 'Friday 16:30 + 120 business min → Monday 10:30 (weekend not billed)');
+// Saturday arrival starts the clock Monday 09:00
+$sat = (new DateTime('2026-07-25 12:00:00', $tz))->setTimezone($utcTz)->format('Y-m-d H:i:s');
+$expMon2 = (new DateTime('2026-07-27 10:00:00', $tz))->setTimezone($utcTz)->format('Y-m-d H:i:s');
+T::eq($expMon2, SlaCalculator::addBusinessMinutes($sat, 60), 'weekend arrival starts the clock Monday morning');
+// the toggle changes what deadlines() produces (resolution crosses the weekend)
+AppConfig::set('sla_business_hours_only', '1');
+$bizDl = SlaCalculator::deadlines('urgent', $fri);
+AppConfig::set('sla_business_hours_only', '0');
+$calDl = SlaCalculator::deadlines('urgent', $fri);
+T::ok($bizDl['resolution'] !== $calDl['resolution'], 'business-hours toggle changes computed deadlines');
+T::eq(gmdate('Y-m-d H:i:s', strtotime($fri) + ((int) AppConfig::get('sla_resolution_urgent', '0')) * 60), $calDl['resolution'], 'toggle off → plain calendar deadlines (unchanged behaviour)');
 
 foreach ($cleanupFiles as $f) {
     if (is_file($f)) { unlink($f); }

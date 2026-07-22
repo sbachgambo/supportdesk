@@ -142,6 +142,31 @@ T::ok(str_contains($csv, "\r\n"), 'CSV uses CRLF line endings (RFC 4180)');
 T::ok(str_contains($csv, '"Weird, ""quoted""' . "\n" . 'subject"'), 'fields with comma/quote/newline are quoted and quotes doubled');
 $lines = explode("\r\n", trim($csv));
 T::ok(count($lines) >= 2, 'CSV contains data rows');
+T::ok(str_contains($csv, ',product,category,'), 'CSV header includes product + category columns');
+
+// ── grouped breakdown + filtered export (custom reports) ─────────────────────
+T::suite('Phase 8: grouped breakdown + filtered export');
+$byStatus = ReportService::grouped('status', 30);
+T::ok(count($byStatus) >= 1, 'grouped by status returns at least one group');
+$created = ReportService::kpis(30)['created'];
+T::eq($created, array_sum(array_map(static fn($g) => (int) $g['total'], $byStatus)), 'grouped status totals sum to the created count');
+T::ok(count(ReportService::grouped('product', 30)) >= 1, 'grouped by product returns rows');
+foreach (['category', 'agent', 'priority'] as $dim) {
+    T::ok(is_array(ReportService::grouped($dim, 30)), "grouped by {$dim} returns an array");
+}
+// filtered export: a product filter that matches nothing → header row only
+$noneCsv = ReportService::ticketsCsv(30, true, null, ['product_id' => 'PRD-NOPE']);
+T::eq(1, count(array_filter(explode("\r\n", trim($noneCsv)))), 'product filter with no matches → header only');
+T::ok(count(explode("\r\n", trim($csv))) >= count(explode("\r\n", trim($noneCsv))), 'unfiltered export has at least as many rows as filtered');
+
+// ── CSAT in reports (#4) ─────────────────────────────────────────────────────
+T::suite('Phase 8: CSAT in reports');
+Db::query("UPDATE tickets SET csat_rating = 4 WHERE ticket_id = 'TKT-2026-9999'");
+$k = ReportService::kpis(30);
+T::ok($k['csat_avg'] !== null && $k['csat_avg'] >= 1 && $k['csat_avg'] <= 5, 'CSAT average surfaces in KPIs');
+T::ok($k['csat_count'] >= 1, 'CSAT rating count surfaces in KPIs');
+$perf = ReportService::agentPerformance(30);
+T::ok($perf === [] || array_key_exists('csat_avg', $perf[0]), 'agent performance rows include csat_avg');
 
 // ── access control on getReports + CSV route ─────────────────────────────────
 T::suite('Phase 8: access control');
@@ -162,5 +187,13 @@ $resp = $export->ticketsCsv($csvReq);
 T::eq(200, $resp->status(), 'agent CSV export → 200');
 T::ok(str_contains($resp->headers()['Content-Type'] ?? '', 'text/csv'), 'CSV served as text/csv');
 T::ok(str_contains($resp->headers()['Content-Disposition'] ?? '', 'attachment'), 'CSV served as an attachment');
+
+// getGroupedReport is agent-gated and returns a breakdown for a valid dimension
+$grReq = new Request(post: ['action' => 'getGroupedReport', 'payload' => ['dimension' => 'product', 'period' => 30], 'csrf' => \App\Core\Csrf::token()],
+    server: ['REQUEST_METHOD' => 'POST', 'REMOTE_ADDR' => '203.0.113.61', 'CONTENT_TYPE' => 'application/json']);
+$grResp = \App\Core\Dispatch::handle($grReq);
+T::eq(200, $grResp->status(), 'agent getGroupedReport → 200');
+$grData = json_decode($grResp->body(), true);
+T::eq('product', $grData['data']['dimension'] ?? '', 'getGroupedReport echoes the dimension');
 
 exit(T::summary());

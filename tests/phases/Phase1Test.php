@@ -82,12 +82,12 @@ T::suite('Phase 1: exit criteria');
 $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
 // NB: brief §7 header says "15 tables" but defines 16 — the count omits
 // totp_backup_codes (added by D8 MFA). 16 is correct. See DEV_NOTES 2026-07-18.
-T::eq(17, count($tables), '17 tables created (16 from §7 + organizations, added for multi-tenancy)');
+T::eq(18, count($tables), '18 tables created (16 from §7 + organizations + products)');
 
 $expected = [
     'attachments', 'audit_log', 'canned_responses', 'categories', 'config',
     'knowledge_base', 'mail_log', 'messages', 'notifications', 'organizations', 'password_resets',
-    'rate_limits', 'routing_rules', 'sessions', 'tickets', 'totp_backup_codes', 'users',
+    'products', 'rate_limits', 'routing_rules', 'sessions', 'tickets', 'totp_backup_codes', 'users',
 ];
 sort($tables);
 T::ok($tables === $expected, 'table names match the §7 schema exactly');

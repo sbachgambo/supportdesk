@@ -62,14 +62,14 @@ T::suite('Phase 9: public submit (§3)');
 [$st] = $call('submitTicket', ['customer_email' => 'a@example.com', 'subject' => 's', 'description' => 'd'], 'bad-token');
 T::eq(419, $st, 'submit with bad public CSRF → 419');
 
-[$st, , $body] = $call('submitTicket', ['customer_email' => 'jane@example.com', 'subject' => 'Help', 'description' => 'It broke', 'priority' => 'high']);
+[$st, , $body] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => 'Help', 'description' => 'It broke', 'priority' => 'high', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
 T::eq(200, $st, 'valid submit → 200');
 $tid = $body['data']['ticket_id'] ?? '';
 T::ok(str_starts_with($tid, 'TKT-'), 'submit returns a ticket id');
 T::eq('web_form', Db::queryOne('SELECT channel FROM tickets WHERE ticket_id = :t', [':t' => $tid])['channel'], 'channel is web_form');
 
 // priority ceiling: public may not select urgent → clamped to normal
-[$st, , $body] = $call('submitTicket', ['customer_email' => 'jane@example.com', 'subject' => 'Urgent!', 'description' => 'now', 'priority' => 'urgent']);
+[$st, , $body] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => 'Urgent!', 'description' => 'now', 'priority' => 'urgent', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
 $tid2 = $body['data']['ticket_id'];
 T::eq('normal', Db::queryOne('SELECT priority FROM tickets WHERE ticket_id = :t', [':t' => $tid2])['priority'], 'public cannot set urgent (ceiling → normal)');
 
@@ -84,20 +84,32 @@ T::eq($before, (int) Db::scalar('SELECT COUNT(*) FROM tickets'), 'honeypot submi
 T::eq(422, $st, 'invalid email rejected');
 
 // bad category → 422
-[$st] = $call('submitTicket', ['customer_email' => 'jane@example.com', 'subject' => 's', 'description' => 'd', 'category_id' => 'CAT-NOPE']);
+[$st] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => 's', 'description' => 'd', 'category_id' => 'CAT-NOPE', 'product_id' => 'PRD-0001']);
 T::eq(422, $st, 'non-existent category rejected');
 
+// bad product → 422
+[$st] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => 's', 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-NOPE']);
+T::eq(422, $st, 'non-existent product rejected');
+
+// compulsory public fields: missing name / category / product → 422
+[$st] = $call('submitTicket', ['customer_email' => 'jane@example.com', 'subject' => 's', 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
+T::eq(422, $st, 'missing customer name rejected (compulsory)');
+[$st] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => 's', 'description' => 'd', 'product_id' => 'PRD-0001']);
+T::eq(422, $st, 'missing category rejected (compulsory)');
+[$st] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => 's', 'description' => 'd', 'category_id' => 'CAT-001']);
+T::eq(422, $st, 'missing product rejected (compulsory)');
+
 // input caps: overlong subject is truncated to 200 (not rejected)
-[$st, , $body] = $call('submitTicket', ['customer_email' => 'jane@example.com', 'subject' => str_repeat('x', 500), 'description' => 'd']);
+[$st, , $body] = $call('submitTicket', ['customer_name' => 'Jane', 'customer_email' => 'jane@example.com', 'subject' => str_repeat('x', 500), 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
 T::eq(200, $st, 'overlong subject accepted (capped)');
 T::eq(200, mb_strlen(Db::queryOne('SELECT subject FROM tickets WHERE ticket_id = :t', [':t' => $body['data']['ticket_id']])['subject']), 'subject capped at 200 chars');
 
 // rate limit: exhaust SUBMIT for one email → next is refused
 Db::query('DELETE FROM rate_limits');
 for ($i = 0; $i < 5; $i++) {
-    $call('submitTicket', ['customer_email' => 'flood@example.com', 'subject' => "s{$i}", 'description' => 'd']);
+    $call('submitTicket', ['customer_name' => 'Flo', 'customer_email' => 'flood@example.com', 'subject' => "s{$i}", 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
 }
-[$st] = $call('submitTicket', ['customer_email' => 'flood@example.com', 'subject' => 's6', 'description' => 'd']);
+[$st] = $call('submitTicket', ['customer_name' => 'Flo', 'customer_email' => 'flood@example.com', 'subject' => 's6', 'description' => 'd', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001']);
 T::eq(422, $st, '6th submission in an hour from one email is rate-limited');
 
 // ── status lookup: byte-identical errors + note isolation ────────────────────

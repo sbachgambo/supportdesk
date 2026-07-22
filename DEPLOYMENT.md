@@ -200,7 +200,9 @@ Nothing else needs write access.
 - [ ] `/status` finds that ticket with the same email; wrong email → generic "no match"
 - [ ] `/login` works; admin is forced through `/mfa`, then forced password change
 - [ ] Agent dashboard loads; open a ticket, reply (ticket flips open→pending), add an internal note
-- [ ] Admin Panel: all six tabs load (Agents / Categories / SLA / System / Routing Rules / Backup)
+- [ ] Admin Panel: all nine tabs load (Agents / Organizations / Products / Categories / SLA / System / Routing Rules / Audit Log / Backup)
+- [ ] `/help` shows the public Help Centre (publish at least one public KB article)
+- [ ] Submit a test ticket with a REAL email → the "We received your request" receipt arrives
 - [ ] Trigger *Admin → Backup → Run backup now* → a `.gz.enc` appears in `storage/backups/`
 - [ ] `PHP_CLI ~/p3a/app/Cron/sla_monitor.php` runs cleanly by hand
 - [ ] `app/`, `.env`, `storage/` are **not** reachable via the browser
@@ -233,6 +235,15 @@ PHP_CLI bin/check_env.php
 ```
 Review `database/migrations/` for any new migration files and apply them in
 order via phpMyAdmin or the CLI before the new code serves traffic.
+
+> **July 2026 release:** an existing database needs
+> `database/migrations/2026_07_22_products.sql` (Products/Projects table +
+> `tickets.product_id`), then add your real product names in *Admin → Products /
+> Projects*. Customers now receive real emails (submission receipt, agent-reply
+> notification, satisfaction request) — make sure `MAIL_*` in `.env` points at a
+> working mailbox before going live. Review the new *Admin → System*
+> auto-close-days setting and the *SLA Targets → SLA clock* (business-hours)
+> option after deploying.
 
 ---
 

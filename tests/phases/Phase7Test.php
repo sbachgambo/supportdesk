@@ -237,10 +237,64 @@ T::eq(422, $st, 'org admin cannot delete an agent in another org');
 T::eq(200, $st, 'org admin can deactivate an agent in their own org');
 
 // system controls are denied to an org admin
-foreach ([['getSystemConfig', []], ['updateConfig', ['company_name' => 'Hijack']], ['updateSlaTargets', ['sla_response_urgent' => 10]], ['listOrganizations', []], ['listCategories', []], ['runBackup', []]] as [$act, $pl]) {
+foreach ([['getSystemConfig', []], ['updateConfig', ['company_name' => 'Hijack']], ['updateSlaTargets', ['sla_response_urgent' => 10]], ['listOrganizations', []], ['listCategories', []], ['runBackup', []], ['listAuditLog', []], ['listBackups', []], ['listProducts', []]] as [$act, $pl]) {
     [$st] = $call($act, $pl);
     T::eq(403, $st, "org admin blocked from system action: {$act}");
 }
+
+// ── Products / Projects admin CRUD (shared list) ─────────────────────────────
+T::suite('Phase 7: products/projects admin');
+// restore the system-admin session (the org-admin section above switched it)
+Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113.50', 'ua', true);
+
+[$st, $b] = $call('createProduct', ['name' => 'Mobile App']);
+T::eq(200, $st, 'admin creates a product');
+$prodId = (string) ($b['data']['product_id'] ?? '');
+T::ok(str_starts_with($prodId, 'PRD-'), 'product gets a PRD- id');
+
+[$st] = $call('createProduct', ['name' => 'Mobile App']);
+T::eq(422, $st, 'duplicate product name rejected');
+
+[$st, $b] = $call('listProducts', []);
+T::ok($st === 200 && count($b['data']['products']) >= 2, 'listProducts includes seeded + new');
+
+[$st] = $call('updateProduct', ['product_id' => $prodId, 'name' => 'Mobile App v2']);
+T::eq(200, $st, 'rename product → 200');
+T::eq('Mobile App v2', (string) \App\Models\Product::find($prodId)['name'], 'rename persisted');
+
+[$st] = $call('updateProduct', ['product_id' => $prodId, 'active' => 0]);
+T::eq(200, $st, 'disable product → 200');
+T::ok(!\App\Models\Product::existsActive($prodId), 'disabled product is not active');
+
+// delete guard: a ticket using a product blocks its deletion (disable instead)
+\App\Services\TicketService::create([
+    'subject' => 'uses product', 'description' => 'd', 'customer_email' => 'p@ex.com',
+    'customer_name' => 'P', 'priority' => 'normal', 'category_id' => 'CAT-001', 'product_id' => 'PRD-0001',
+], 'web_form');
+[$st] = $call('deleteProduct', ['product_id' => 'PRD-0001']);
+T::eq(422, $st, 'cannot delete a product still used by a ticket');
+// an unused product deletes cleanly
+[$st] = $call('deleteProduct', ['product_id' => $prodId]);
+T::eq(200, $st, 'delete an unused product → 200');
+
+// ── Audit log viewer + backup list (admin) ───────────────────────────────────
+T::suite('Phase 7: audit viewer + backups');
+[$st, $b] = $call('listAuditLog', []);
+T::ok($st === 200 && count($b['data']['rows']) >= 1, 'admin lists audit entries');
+T::ok(($b['data']['total'] ?? 0) >= count($b['data']['rows']), 'total covers at least the returned page');
+[$st, $b] = $call('listAuditLog', ['action' => 'product_create']);
+T::ok($st === 200 && $b['data']['rows'] !== [] && $b['data']['rows'][0]['action'] === 'product_create', 'action filter narrows the log');
+[$st, $b] = $call('listAuditLog', ['verify' => 1]);
+T::ok($st === 200 && ($b['data']['chain_ok'] ?? false) === true, 'hash chain verifies intact on demand');
+
+[$st, $b] = $call('runBackup', []);
+T::eq(200, $st, 'runBackup → 200');
+if (!empty($b['data']['file'])) {
+    $backups[] = \App\Services\BackupService::backupDir() . '/' . $b['data']['file'];
+}
+[$st2, $b2] = $call('listBackups', []);
+$names = array_map(static fn(array $f): string => (string) $f['name'], $b2['data']['backups'] ?? []);
+T::ok($st2 === 200 && in_array((string) ($b['data']['file'] ?? ''), $names, true), 'listBackups includes the new backup file');
 
 // ── cleanup ──────────────────────────────────────────────────────────────────
 foreach ($backups as $b) {

@@ -36,7 +36,16 @@ final class ExportController
             $org = (string) ($me['organization_id'] ?? '');
             $orgId = $org === '' ? null : $org;
         }
-        $csv = ReportService::ticketsCsv($period, $allOrgs, $orgId);
+        // Optional filters (custom report export). Each is a bound sentinel in the query.
+        $filters = [
+            'status'      => (string) ($request->query('status') ?? ''),
+            'priority'    => (string) ($request->query('priority') ?? ''),
+            'product_id'  => (string) ($request->query('product_id') ?? ''),
+            'category_id' => (string) ($request->query('category_id') ?? ''),
+            'assigned_to' => (string) ($request->query('assigned_to') ?? ''),
+            'q'           => (string) ($request->query('q') ?? ''),
+        ];
+        $csv = ReportService::ticketsCsv($period, $allOrgs, $orgId, $filters);
         Audit::log((string) Session::email(), 'report_export', '', "period={$period}");
 
         return Response::make($csv, 200, 'text/csv; charset=utf-8')

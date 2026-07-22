@@ -28,7 +28,7 @@ $company = $company ?? 'SupportDesk';
     </div>
 
     <!-- FORM VIEW -->
-    <div data-region="submit-form">
+    <div data-bind="submit-form">
       <h1 class="pub-title">How can we help?</h1>
       <p class="pub-tagline">Submit a request and our team will get back to you shortly.</p>
 
@@ -37,8 +37,8 @@ $company = $company ?? 'SupportDesk';
       <form data-action="submit-ticket" autocomplete="on">
         <div class="pub-row2">
           <div class="field">
-            <label>Your name <span class="pub-opt">(optional)</span></label>
-            <input type="text" name="customer_name" placeholder="Jane Doe" maxlength="120">
+            <label>Your name *</label>
+            <input type="text" name="customer_name" placeholder="Jane Doe" required maxlength="120">
           </div>
           <div class="field">
             <label>Email address *</label>
@@ -55,11 +55,20 @@ $company = $company ?? 'SupportDesk';
             <option value="__general__">Other / not listed</option>
           </select>
         </div>
+        <div class="field">
+          <label>Product / Project *</label>
+          <select name="product_id" required>
+            <option value="" disabled selected>— Select a product / project —</option>
+            <?php foreach (($products ?? []) as $p): ?>
+              <option value="<?= e($p['product_id']) ?>"><?= e($p['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
         <div class="pub-row2">
           <div class="field">
-            <label>Category</label>
-            <select name="category_id">
-              <option value="">— Select —</option>
+            <label>Category *</label>
+            <select name="category_id" required>
+              <option value="" disabled selected>— Select —</option>
               <?php foreach (($categories ?? []) as $c): ?>
                 <option value="<?= e($c['category_id']) ?>"><?= e(($c['parent_id'] ? '— ' : '') . $c['name']) ?></option>
               <?php endforeach; ?>
@@ -93,12 +102,13 @@ $company = $company ?? 'SupportDesk';
       </form>
 
       <?php if (!$widget): ?>
-        <div class="pub-footer">Already have a ticket? <a href="<?= e(url('status')) ?>" target="_top">Check its status →</a></div>
+        <div class="pub-footer">Already have a ticket? <a href="<?= e(url('status')) ?>" target="_top">Check its status →</a>
+          &nbsp;·&nbsp; <a href="<?= e(url('help')) ?>" target="_top">Help Centre</a></div>
       <?php endif; ?>
     </div>
 
     <!-- SUCCESS VIEW -->
-    <div data-region="submit-done" hidden>
+    <div data-bind="submit-done" hidden>
       <div class="pub-done">
         <div class="pub-done-icon ok">
           <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>

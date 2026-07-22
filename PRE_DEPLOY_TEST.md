@@ -66,8 +66,10 @@ php bin/totp_code.php admin@p3a-support.com.ng
 
 ### 2.1 Submit a request — `http://localhost:8000/submit`
 - [ ] **Do:** page loads. **Expect:** the branded card ("How can we help?"), company name = **Acme Corporation**, dark/light toggle top-right.
-- [ ] **Do:** click **Submit** with everything empty. **Expect:** inline red error asking for a valid email / subject / description (form does not submit).
-- [ ] **Do:** fill name, a valid email, subject, description, pick a category + priority; Submit. **Expect:** success view with a green check and a boxed reference id like **`TKT-2026-0001`**. Copy that id + email.
+- [ ] **Do:** click **Submit** with everything empty. **Expect:** the browser blocks on the first empty required field — **every field is compulsory** (name, email, organization, product/project, category, subject, description).
+- [ ] **Do:** note the **Product / Project** dropdown sits **above Category** and requires a choice (seeded: the demo products, e.g. Helpdesk Portal / Mobile App / …).
+- [ ] **Do:** fill name, a valid email, subject, description, pick organization + product + category + priority; Submit. **Expect:** success view with a green check and a boxed reference id like **`TKT-2026-0001`**. Copy that id + email.
+- [ ] **Do:** confirm the customer receipt email was recorded (dev mail is pretend): `php -r "require 'vendor/autoload.php'; App\Core\Config::load('.env'); var_dump(App\Core\Db::queryOne(\"SELECT subject,status FROM mail_log WHERE subject LIKE 'We received your request%' ORDER BY id DESC LIMIT 1\"));"` **Expect:** a row with `status='sent'`.
 - [ ] **Do:** note the priority dropdown options. **Expect:** only Low / Normal / High — **no "Urgent"** (public priority ceiling).
 - [ ] **Do:** click the **Company / Institution** field. **Expect:** managed companies appear as suggestions, and you can also type a company that isn't listed.
 - [ ] **Do:** click **Submit another request**. **Expect:** the form resets to blank.
@@ -80,6 +82,11 @@ php bin/totp_code.php admin@p3a-support.com.ng
 
 ### 2.3 Widget (optional)
 - [ ] **Do:** open `http://localhost:8000/submit?widget=1`. **Expect:** the same form with no theme toggle / footer links (embeddable mode).
+
+### 2.4 Help Centre — `http://localhost:8000/help`
+- [ ] **Do:** open `/help`. **Expect:** the public Help Centre — the demo seed's **public** KB articles grouped by category, with a search box.
+- [ ] **Do:** click an article. **Expect:** the full article renders; **internal** articles (e.g. "Escalation playbook") never appear anywhere on `/help`.
+- [ ] **Do:** search for a word from an article title. **Expect:** the list narrows.
 
 ---
 
@@ -129,6 +136,7 @@ php bin/totp_code.php admin@p3a-support.com.ng
 
 - [ ] **Do:** land on Dashboard. **Expect:** stat cards (Open, Pending/Resolved 24h, SLA breaches, avg response) with real numbers; a "recent tickets" list.
 - [ ] **Do:** click sidebar **All Tickets**. **Expect:** a table of all 9 demo tickets — priority dots, status chips, SLA chips, assignee avatars; count badge matches.
+- [ ] **Do:** use the **filter bar** above the list — pick a Product, a Priority, or type in the search box. **Expect:** the table narrows live; **Clear** resets; the **Export CSV** button downloads exactly the filtered set (with Product + Category columns).
 - [ ] **Do:** **My Tickets**. **Expect:** only tickets assigned to the signed-in agent.
 - [ ] **Do:** **SLA Breaches**. **Expect:** only breached, still-open tickets (the demo seed includes at least one).
 - [ ] **Do:** **Resolved**. **Expect:** resolved/closed tickets only.
@@ -142,8 +150,8 @@ php bin/totp_code.php admin@p3a-support.com.ng
 
 Open any **open** demo ticket from All Tickets.
 
-- [ ] **Expect:** a wide modal — left: message thread (customer/agent/note bubbles); right: Customer, Status, Priority, Assignee, SLA, Attachments.
-- [ ] **Do:** type a reply, click **Reply**. **Expect:** it appears in the thread as an agent message, **and the ticket status flips Open → Pending** (check the status chip).
+- [ ] **Expect:** a wide modal — left: message thread (customer/agent/note bubbles); right: Customer, Organization, **Product / Project**, Status, Priority, Assignee, SLA, Attachments.
+- [ ] **Do:** type a reply, click **Reply**. **Expect:** it appears in the thread as an agent message, **and the ticket status flips Open → Pending** (check the status chip). A **"New reply on your request"** email to the customer is recorded in `mail_log` (pretend in dev).
 - [ ] **Do:** type text, click **Internal note**. **Expect:** it appears as a distinct note bubble.
 - [ ] **Do:** open the same ticket's **public status page** (`/status` with its id + customer email in another tab). **Expect:** the reply is visible to the customer, but the **internal note is NOT** shown.
 - [ ] **Do:** pick a **Canned response** from the composer dropdown. **Expect:** the composer fills with the templated text (customer/agent/ticket-id substituted).
@@ -156,7 +164,7 @@ Open any **open** demo ticket from All Tickets.
 
 ## 6. Create a ticket (agent side)
 
-- [ ] **Do:** **+ New ticket**, fill subject/customer email/description, pick priority (Urgent available here); Create. **Expect:** modal closes, toast, the new ticket appears at the top of All Tickets and is auto-assigned to an agent.
+- [ ] **Do:** **+ New ticket**, fill subject/customer email/description, pick a **Product / Project** + priority (Urgent available here); Create. **Expect:** modal closes, toast, the new ticket appears at the top of All Tickets and is auto-assigned to an agent.
 - [ ] **Do:** in the **Company / Institution** field, click it. **Expect:** a dropdown of the managed companies appears — and you can also **type a new one** that isn't in the list (combobox).
 - [ ] **Do:** create a ticket with a company set, then open it. **Expect:** the **Company** shows in the ticket detail side panel.
 - [ ] **Do:** try Create with an invalid email. **Expect:** a red validation error, no ticket created.
@@ -180,9 +188,10 @@ starts empty and you create articles below.)
 
 ## 8. Reports
 
-- [ ] **Do:** sidebar **Reports**. **Expect:** 4 stat cards + charts (volume line, distribution bars) render via the self-hosted Chart.js.
+- [ ] **Do:** sidebar **Reports**. **Expect:** **5 stat cards** (incl. **Customer rating** — "x / 5 · N ratings") + charts (volume line, distribution bars) render via the self-hosted Chart.js.
 - [ ] **Do:** switch the period (7/30/90 days). **Expect:** the numbers and charts update.
-- [ ] **Do:** click **Export CSV**. **Expect:** a `.csv` downloads; opening it shows the ticket rows with headers.
+- [ ] **Do:** scroll to **Breakdown**. **Expect:** a grouped table (Tickets / Resolved per group); switching the dimension (Product / Category / Agent / Status / Priority) re-groups it.
+- [ ] **Do:** click **Export CSV**. **Expect:** a `.csv` downloads; opening it shows the ticket rows with headers, including **product** and **category** columns.
 
 ---
 
@@ -206,7 +215,13 @@ Sidebar shows **Administration → Admin Panel** (only for admins).
 - [ ] **Do:** **Disable/Enable** it. **Expect:** Active toggles.
 - [ ] **Do:** **Delete** a category that has tickets assigned. **Expect:** blocked ("tickets are assigned…"). Delete your empty test category → succeeds.
 
-### 9.2b Companies / Institutions
+### 9.2b Products / Projects
+- [ ] **Do:** **Products / Projects** tab. **Expect:** the seeded products with Add / Edit / Disable / Delete actions.
+- [ ] **Do:** **Add** one (e.g. "Test Product"). **Expect:** it appears; adding the same name again is rejected as a duplicate; it now shows in both ticket forms' dropdowns.
+- [ ] **Do:** **Disable** it. **Expect:** Active = No; it disappears from the form dropdowns (existing tickets keep it).
+- [ ] **Do:** **Delete** a product that has tickets. **Expect:** blocked ("tickets are assigned…"). Delete your unused test product → succeeds.
+
+### 9.2c Companies / Institutions
 - [ ] **Do:** **Companies** tab. **Expect:** a table of client companies (5 seeded — Northwind, Brightsea, etc.) with an **Add** field.
 - [ ] **Do:** **Add** a company (e.g. "Test Institute"). **Expect:** it appears; adding the same name again is rejected as a duplicate.
 - [ ] **Do:** **Edit** its name → **Save changes**. **Expect:** the row updates.
@@ -216,10 +231,12 @@ Sidebar shows **Administration → Admin Panel** (only for admins).
 ### 9.3 SLA Targets
 - [ ] **Do:** **SLA Targets** tab → change a tier's minutes → **Save SLA targets**. **Expect:** toast "SLA saved".
 - [ ] **Do:** set resolution < response → Save. **Expect:** rejected with an error.
+- [ ] **Do:** in **SLA clock**, switch to **Business hours only** (e.g. 08:00–17:00, days `1,2,3,4,5`) → Save. **Expect:** toast; a NEW ticket created on a weekend/evening gets deadlines starting the next working morning. Switch back to **Calendar time** afterwards.
 
 ### 9.4 System
 - [ ] **Do:** **System** tab → change company name/support email/brand colour → **Save settings**. **Expect:** toast; reload shows the new company name in the top bar.
 - [ ] **Do:** enter an invalid support email → Save. **Expect:** rejected.
+- [ ] **Do:** check **Auto-close resolved tickets after (days)** shows a number (default 7; 0 = off). Enter letters → Save. **Expect:** rejected.
 
 ### 9.5 Routing Rules
 - [ ] **Do:** **Routing Rules** tab. **Expect:** 3 seeded sample rules (Billing→High, Refund→tag+High, Outage→Urgent).
@@ -229,8 +246,14 @@ Sidebar shows **Administration → Admin Panel** (only for admins).
 - [ ] **Do:** **Disable** the rule, submit another matching ticket. **Expect:** it comes in at the chosen priority (rule did **not** fire).
 - [ ] **Do:** **Delete** the rule.
 
-### 9.6 Backup & Data
-- [ ] **Do:** **Backup & Data** tab → **Run backup now**. **Expect:** toast "Backup created: …"; a `.gz.enc` file appears in `storage/backups/`.
+### 9.6 Audit Log
+- [ ] **Do:** **Audit Log** tab. **Expect:** a table of recorded actions (time, actor, action, target, details, IP), newest first, with Newer/Older paging.
+- [ ] **Do:** filter by an action (e.g. `login_success`) → **Apply**. **Expect:** only those rows.
+- [ ] **Do:** click **Verify chain**. **Expect:** "✓ Chain intact — no tampering detected."
+
+### 9.7 Backup & Data
+- [ ] **Do:** **Backup & Data** tab → **Run backup now**. **Expect:** toast "Backup created: …"; the file appears in `storage/backups/` **and in the backups table below the button**.
+- [ ] **Do:** click **Download** next to a backup. **Expect:** the file downloads (signed-out visitors hitting the same URL are bounced to /login).
 - [ ] **Do:** in the danger zone, type the wrong phrase → Reset. **Expect:** refused ("confirmation phrase did not match").
 - [ ] **(Optional, destructive)** type `RESET TICKET DATA` exactly → confirm. **Expect:** tickets cleared, a backup taken first, and the audit log **survives**. Re-seed afterward with `php bin/seed_demo.php`.
 
@@ -241,6 +264,13 @@ Sidebar shows **Administration → Admin Panel** (only for admins).
 - [ ] **Do:** click the **key icon** in the sidebar footer. **Expect:** "Change password" modal (dismissable — has a close ×).
 - [ ] **Do:** wrong current password. **Expect:** "Your current password is incorrect."
 - [ ] **Do:** valid current + a new 12+ char password + matching confirm. **Expect:** toast "Password updated".
+
+## 10b. Two-factor authentication for agents (self-service)
+
+- [ ] **Do:** as an **agent**, click the **shield icon** in the sidebar footer. **Expect:** the 2FA page opens in manage mode.
+- [ ] **Do:** enroll (scan/enter the secret, confirm a code — `php bin/totp_code.php <agent email>` prints one after enrolment). **Expect:** backup codes shown once.
+- [ ] **Do:** sign out and back in as that agent. **Expect:** a 6-digit challenge before the dashboard.
+- [ ] **Do:** shield icon again → **Turn off two-factor authentication**. **Expect:** back to password-only sign-in. (Admins cannot turn theirs off while admin 2FA is required.)
 
 ---
 
@@ -261,7 +291,7 @@ These are CLI-only (they refuse to run over HTTP). Run from the project root:
 
 - [ ] `php app/Cron/sla_monitor.php` → **Expect:** runs clean; breached tickets get audited + assignees notified; a second run is a no-op.
 - [ ] `php app/Cron/backup_db.php` → **Expect:** an encrypted `.gz.enc` lands in `storage/backups/`.
-- [ ] `php app/Cron/cleanup.php` → **Expect:** runs clean (prunes old sessions/logs/tokens).
+- [ ] `php app/Cron/cleanup.php` → **Expect:** runs clean (prunes old sessions/logs/tokens **and auto-closes tickets resolved 7+ days ago**, emailing an unrated customer a satisfaction request — `auto_closed=N` in the output).
 - [ ] `php app/Cron/daily_digest.php` → **Expect:** runs clean (in dev, mail is pretended — check `storage/logs/`).
 - [ ] `php app/Cron/ingest_email.php` → **Expect:** runs clean or a graceful "IMAP not configured" (fine locally without a mailbox).
 
@@ -283,15 +313,16 @@ These are CLI-only (they refuse to run over HTTP). Run from the project root:
 | Area | Pass? | Notes |
 |---|---|---|
 | Automated suite (§1) | ☐ | |
-| Public submit/status (§2) | ☐ | |
+| Public submit/status/help (§2) | ☐ | |
 | Auth + MFA + reset (§3) | ☐ | |
-| Dashboard + lists (§4) | ☐ | |
+| Dashboard + lists + filters (§4) | ☐ | |
 | Ticket lifecycle (§5) | ☐ | |
 | Create ticket (§6) | ☐ | |
 | KB (§7) | ☐ | |
-| Reports (§8) | ☐ | |
-| Admin panel — 6 tabs (§9) | ☐ | |
+| Reports + breakdown + CSAT (§8) | ☐ | |
+| Admin panel — 9 tabs (§9) | ☐ | |
 | Change password (§10) | ☐ | |
+| Agent 2FA self-service (§10b) | ☐ | |
 | Security spot-checks (§11) | ☐ | |
 | Cron runners (§12) | ☐ | |
 | Backup/restore (§13) | ☐ | |

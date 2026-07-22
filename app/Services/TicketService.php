@@ -8,6 +8,7 @@ use App\Core\Ids;
 use App\Models\Category;
 use App\Models\Message;
 use App\Models\Organization;
+use App\Models\Product;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Security\Audit;
@@ -40,6 +41,7 @@ final class TicketService
         $organizationId = trim((string) ($input['organization_id'] ?? ''));
         $priority = (string) ($input['priority'] ?? 'normal');
         $categoryId = trim((string) ($input['category_id'] ?? ''));
+        $productId = trim((string) ($input['product_id'] ?? ''));
         $tags = trim((string) ($input['tags'] ?? ''));
 
         // ── validation ──
@@ -67,6 +69,9 @@ final class TicketService
         }
         if ($categoryId !== '' && !Category::existsActive($categoryId)) {
             return self::err('Selected category does not exist.');
+        }
+        if ($productId !== '' && !Product::existsActive($productId)) {
+            return self::err('Selected product/project does not exist.');
         }
         if (mb_strlen($tags) > 255) {
             return self::err('Tags are too long.');
@@ -106,7 +111,7 @@ final class TicketService
         // Sequence + insert in one transaction so concurrent creates can't collide.
         $ticketId = Db::transaction(static function () use (
             $subject, $description, $customerName, $customerEmail, $orgForAssign, $priority,
-            $categoryId, $tags, $channel, $assignee, $now, $deadlines, $input
+            $categoryId, $productId, $tags, $channel, $assignee, $now, $deadlines, $input
         ): string {
             $tid = Ids::nextTicketId();
             Ticket::create([
@@ -120,6 +125,7 @@ final class TicketService
                 'priority'                => $priority,
                 'status'                  => 'open',
                 'category_id'             => $categoryId === '' ? null : $categoryId,
+                'product_id'              => $productId === '' ? null : $productId,
                 'tags'                    => $tags,
                 'channel'                 => $channel,
                 'assigned_to'             => $assignee,
@@ -143,7 +149,12 @@ final class TicketService
             NotificationService::create($assignee, 'assigned', "You were assigned {$ticketId}", $ticketId);
         }
 
-        return ['ok' => true, 'ticket' => Ticket::find($ticketId)];
+        $ticket = Ticket::find($ticketId);
+        // Submission receipt: the customer gets their reference number by email (§3).
+        // Mailer handles suppression/pretend and never throws — this cannot break creation.
+        CustomerMail::ticketCreated($ticket);
+
+        return ['ok' => true, 'ticket' => $ticket];
     }
 
     /** Customer-visible agent reply. Stamps first response if not yet set. */
@@ -175,6 +186,8 @@ final class TicketService
         Ticket::update($ticketId, $fields);
 
         Audit::log((string) $actor['email'], 'ticket_reply', $ticketId);
+        // Notify the customer by email — customer-visible replies only (never notes).
+        CustomerMail::agentReplied($ticket, $text);
         return ['ok' => true, 'ticket' => Ticket::find($ticketId)];
     }
 

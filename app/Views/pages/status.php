@@ -43,6 +43,7 @@ $company = $company ?? 'SupportDesk';
 
     <div class="pub-result" data-bind="status-result" hidden></div>
 
-    <div class="pub-footer">Need to open a new request? <a href="<?= e(url('submit')) ?>" target="_top">Submit a request →</a></div>
+    <div class="pub-footer">Need to open a new request? <a href="<?= e(url('submit')) ?>" target="_top">Submit a request →</a>
+      &nbsp;·&nbsp; <a href="<?= e(url('help')) ?>" target="_top">Help Centre</a></div>
   </div>
 </div>

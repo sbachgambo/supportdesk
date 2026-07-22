@@ -29,12 +29,12 @@
     }
 
     // ── state ─────────────────────────────────────────────────────────────────
-    var state = { view: 'dashboard', ticket: null, agents: [], organizations: [], categories: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null, categoriesAdmin: [], organizationsAdmin: [], rulesAdmin: [], ruleEditId: null, entityKind: null, entityId: null };
+    var state = { view: 'dashboard', ticket: null, agents: [], organizations: [], categories: [], products: [], canned: [], page: {}, cache: {}, forcedPw: false, me: null, kbEditId: null, kbCurrent: null, categoriesAdmin: [], organizationsAdmin: [], productsAdmin: [], rulesAdmin: [], ruleEditId: null, entityKind: null, entityId: null };
 
     // ── boot ──────────────────────────────────────────────────────────────────
     async function boot() {
         var d = await api('getDashboardData');
-        if (d && d.ok) { state.agents = d.data.agents || []; state.organizations = d.data.organizations || []; state.categories = d.data.categories || []; }
+        if (d && d.ok) { state.agents = d.data.agents || []; state.organizations = d.data.organizations || []; state.categories = d.data.categories || []; state.products = d.data.products || []; }
         var canned = await api('getCannedResponses');
         if (canned && canned.ok) { state.canned = canned.data.responses || []; }
         refreshCounts();
@@ -132,14 +132,75 @@
 
     // ── ticket lists ──────────────────────────────────────────────────────────
     var VIEW_TITLES = { all: 'All Tickets', mine: 'My Tickets', breaches: 'SLA Breaches', resolved: 'Resolved' };
+    var listView = 'all';
+    var listFilter = { q: '', product_id: '', category_id: '', priority: '', status: '', assigned_to: '' };
     async function renderList(view) {
+        listView = view;
         var c = region('content'); c.textContent = '';
         c.appendChild(header(VIEW_TITLES[view] || 'Tickets', '', true));
         var r = await api('getTicketsForView', { view: view });
-        var rows = r.ok ? r.data.tickets : [];
-        state.cache[view] = rows;
+        state.cache[view] = r.ok ? r.data.tickets : [];
         if (!state.page[view]) { state.page[view] = 1; }
-        c.appendChild(ticketTable(VIEW_TITLES[view] || 'Tickets', rows, true, view));
+        c.appendChild(listFilterBar());
+        var host = el('div'); host.setAttribute('data-region', 'list-table'); c.appendChild(host);
+        drawList();
+    }
+    function listFilterBar() {
+        var bar = el('div', 'list-filter-bar');
+        bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;';
+        var search = inp({ type: 'search', placeholder: 'Search subject, customer, id…', 'data-listfilter': 'q' });
+        search.style.cssText = 'flex:1 1 200px;min-width:160px;'; if (listFilter.q) { search.value = listFilter.q; }
+        bar.appendChild(search);
+        bar.appendChild(filterSelect('product_id', 'All products', (state.products || []).map(function (p) { return [p.product_id, p.name]; })));
+        bar.appendChild(filterSelect('category_id', 'All categories', (state.categories || []).map(function (c) { return [c.category_id, (c.parent_id ? '— ' : '') + c.name]; })));
+        bar.appendChild(filterSelect('priority', 'All priorities', [['urgent', 'Urgent'], ['high', 'High'], ['normal', 'Normal'], ['low', 'Low']]));
+        bar.appendChild(filterSelect('status', 'All statuses', [['open', 'Open'], ['pending', 'Pending'], ['resolved', 'Resolved'], ['closed', 'Closed']]));
+        bar.appendChild(filterSelect('assigned_to', 'All agents', (state.agents || []).map(function (a) { return [a.email, a.name]; })));
+        var clear = el('button', 'btn-mini', 'Clear'); clear.setAttribute('data-action', 'clear-list-filters'); bar.appendChild(clear);
+        var exp = el('a', 'btn-secondary', 'Export CSV'); exp.setAttribute('data-bind', 'list-export'); exp.href = exportUrl(); bar.appendChild(exp);
+        return bar;
+    }
+    function filterSelect(key, allLabel, pairs) {
+        var s = document.createElement('select'); s.setAttribute('data-listfilter', key);
+        s.appendChild(new Option(allLabel, ''));
+        pairs.forEach(function (p) { var o = new Option(p[1], p[0]); if (listFilter[key] === p[0]) { o.selected = true; } s.appendChild(o); });
+        return s;
+    }
+    function drawList() {
+        var host = region('list-table'); if (!host) { return; }
+        host.textContent = '';
+        host.appendChild(ticketTable(VIEW_TITLES[listView] || 'Tickets', applyListFilters(state.cache[listView] || []), true, listView));
+    }
+    function applyListFilters(rows) {
+        var f = listFilter; var qv = (f.q || '').toLowerCase();
+        return rows.filter(function (t) {
+            if (f.product_id && String(t.product_id || '') !== f.product_id) { return false; }
+            if (f.category_id && String(t.category_id || '') !== f.category_id) { return false; }
+            if (f.priority && t.priority !== f.priority) { return false; }
+            if (f.status && t.status !== f.status) { return false; }
+            if (f.assigned_to && String(t.assigned_to || '') !== f.assigned_to) { return false; }
+            if (qv) {
+                var hay = ((t.subject || '') + ' ' + (t.customer_name || '') + ' ' + (t.customer_email || '') + ' ' + (t.ticket_id || '')).toLowerCase();
+                if (hay.indexOf(qv) === -1) { return false; }
+            }
+            return true;
+        });
+    }
+    function exportUrl() {
+        var p = ['period=90'];
+        ['product_id', 'category_id', 'priority', 'status', 'assigned_to', 'q'].forEach(function (k) {
+            if (listFilter[k]) { p.push(k + '=' + encodeURIComponent(listFilter[k])); }
+        });
+        return '/export/tickets.csv?' + p.join('&');
+    }
+    function onListFilterChange(key, value) {
+        listFilter[key] = value; state.page[listView] = 1;
+        drawList();
+        var a = q('[data-bind="list-export"]'); if (a) { a.href = exportUrl(); }
+    }
+    function clearListFilters() {
+        listFilter = { q: '', product_id: '', category_id: '', priority: '', status: '', assigned_to: '' };
+        state.page[listView] = 1; renderList(listView);
     }
     function ticketTable(title, rows, paginate, view) {
         var card = el('div', 'table-card');
@@ -206,6 +267,7 @@
         replaceChip('d-priority', priorityTag(t.priority));
         bind('d-customer', t.customer_name || '—'); bind('d-email', t.customer_email);
         bind('d-organization', t.organization_name || '—');
+        bind('d-product', t.product_name || '—');
         bind('d-sla-resp', t.sla_response_status); bind('d-sla-res', t.sla_resolution_status);
         q('[data-action="change-status"]').value = t.status;
         q('[data-action="change-priority"]').value = t.priority;
@@ -350,6 +412,8 @@
 
     // ── reports ───────────────────────────────────────────────────────────────
     var reportPeriod = 30;
+    var reportDim = 'product';
+    var DIM_LABELS = { product: 'Product / Project', category: 'Category', agent: 'Agent', status: 'Status', priority: 'Priority' };
     function loadChart() { return new Promise(function (res, rej) { if (window.Chart) { return res(); } var s = document.createElement('script'); s.src = assetBase + 'vendor/chart.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
     async function renderReports() {
         var c = region('content'); c.textContent = '';
@@ -366,6 +430,7 @@
         grid.appendChild(statCard('Resolved', d.kpis.resolved, 'in period', '#ECFDF3', '#17B26A'));
         grid.appendChild(statCard('Avg resolution', d.kpis.avg_resolution_hours != null ? d.kpis.avg_resolution_hours + 'h' : '—', 'hours', '#FEF6EE', '#F79009'));
         grid.appendChild(statCard('SLA compliance', d.kpis.sla_compliance_pct != null ? d.kpis.sla_compliance_pct + '%' : '—', 'resolution', '#EEF0FE', '#4057F5'));
+        grid.appendChild(statCard('Customer rating', d.kpis.csat_avg != null ? d.kpis.csat_avg + ' / 5' : '—', (d.kpis.csat_count || 0) + ' rating' + (d.kpis.csat_count === 1 ? '' : 's'), '#FEF6EE', '#F79009'));
         c.appendChild(grid);
         var row = el('div', 'charts-grid');
         row.appendChild(chartCard('Volume by day', 'vol')); row.appendChild(chartCard('By status', 'status'));
@@ -374,11 +439,46 @@
         row2.appendChild(chartCard('By priority', 'prio')); row2.appendChild(chartCard('By channel', 'chan'));
         c.appendChild(row2);
         var exp = el('a', 'btn-secondary', 'Export CSV'); exp.href = '/export/tickets.csv?period=' + reportPeriod; c.appendChild(exp);
+
+        // Custom breakdown (grouped summary): tickets per product/category/agent/status/priority.
+        var bd = el('div', 'table-card'); bd.style.marginTop = '18px';
+        var bdHead = el('div', 'table-header');
+        bdHead.appendChild(el('span', 'table-header-title', 'Breakdown'));
+        var dimSw = el('div', 'period-switch');
+        Object.keys(DIM_LABELS).forEach(function (dim) {
+            var b = el('button', 'period-btn' + (dim === reportDim ? ' active' : ''), DIM_LABELS[dim]);
+            b.setAttribute('data-action', 'report-dim'); b.setAttribute('data-dim', dim); dimSw.appendChild(b);
+        });
+        bdHead.appendChild(dimSw); bd.appendChild(bdHead);
+        var bdBody = el('div'); bdBody.setAttribute('data-region', 'report-breakdown'); bd.appendChild(bdBody);
+        c.appendChild(bd);
+        drawBreakdown();
+
         try {
             await loadChart();
             drawLine('vol', d.volume.map(function (p) { return p.date.slice(5); }), d.volume.map(function (p) { return p.count; }));
             drawBar('status', d.distributions.status); drawBar('prio', d.distributions.priority); drawBar('chan', d.distributions.channel);
         } catch (e) { /* charts unavailable */ }
+    }
+    async function drawBreakdown() {
+        var host = region('report-breakdown'); if (!host) { return; }
+        host.textContent = '';
+        var r = await api('getGroupedReport', { dimension: reportDim, period: reportPeriod });
+        if (!r || !r.ok) { host.appendChild(emptyState('Could not load breakdown.')); return; }
+        var groups = r.data.groups || [];
+        if (!groups.length) { host.appendChild(emptyState('No tickets in this period.')); return; }
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        [DIM_LABELS[reportDim] || 'Group', 'Tickets', 'Resolved'].forEach(function (h) { htr.appendChild(el('th', null, h)); });
+        thead.appendChild(htr); table.appendChild(thead);
+        var tb = el('tbody');
+        groups.forEach(function (g) {
+            var tr = el('tr');
+            tr.appendChild(el('td', null, g.label));
+            tr.appendChild(el('td', null, String(g.total)));
+            tr.appendChild(el('td', null, String(g.resolved)));
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); host.appendChild(table);
     }
     function chartCard(title, key) { var card = el('div', 'chart-card'); card.appendChild(el('div', 'chart-card-title', title)); var wrap = el('div', 'chart-wrap'); var cv = document.createElement('canvas'); cv.setAttribute('data-chart', key); wrap.appendChild(cv); card.appendChild(wrap); return card; }
     var charts = {};
@@ -396,7 +496,7 @@
         c.appendChild(header(sys ? 'Admin Panel' : 'Organization Admin', sys ? 'Manage your helpdesk' : 'Manage your organization’s team', false));
         // Org admins get only the Agents tab (their own org); system admins get everything.
         var tabDefs = sys
-            ? [['agents', 'Agents'], ['organizations', 'Organizations'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['backup', 'Backup & Data']]
+            ? [['agents', 'Agents'], ['organizations', 'Organizations'], ['products', 'Products / Projects'], ['categories', 'Categories'], ['sla', 'SLA Targets'], ['config', 'System'], ['rules', 'Routing Rules'], ['audit', 'Audit Log'], ['backup', 'Backup & Data']]
             : [['agents', 'Agents']];
         if (!sys) { adminTab = 'agents'; }
         var tabs = el('div', 'tabs');
@@ -408,9 +508,11 @@
         if (adminTab === 'agents') { renderAgents(body); }
         else if (adminTab === 'categories') { renderCategories(body); }
         else if (adminTab === 'organizations') { renderOrganizations(body); }
+        else if (adminTab === 'products') { renderProducts(body); }
         else if (adminTab === 'sla') { renderSla(body); }
         else if (adminTab === 'config') { renderConfig(body); }
         else if (adminTab === 'rules') { renderRules(body); }
+        else if (adminTab === 'audit') { renderAudit(body); }
         else { renderBackup(body); }
     }
 
@@ -609,11 +711,60 @@
     }
     function orgName(id) { var o = (state.organizationsAdmin || state.organizations || []).find(function (x) { return x.organization_id === id; }); return o ? o.name : '—'; }
 
+    // ── Products / Projects (shared list) ─────────────────────────────────────
+    async function renderProducts(body) {
+        var r = await api('listProducts', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        state.productsAdmin = r.data.products || [];
+        var form = el('div', 'admin-form');
+        form.appendChild(el('div', 'admin-form-title', 'Add a product / project'));
+        var row = el('div', 'admin-form-row');
+        row.appendChild(inp({ type: 'text', placeholder: 'Product / project name', 'data-newprod': 'name' }));
+        var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-product'); row.appendChild(add);
+        form.appendChild(row);
+        form.appendChild(el('div', 'admin-form-hint', 'Clients pick a product / project on the ticket form. Disable one to hide it from the forms while keeping its tickets and history.'));
+        body.appendChild(form);
+
+        var card = el('div', 'table-card');
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        ['Name', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
+        var tb = el('tbody');
+        if (!state.productsAdmin.length) { var er = el('tr'); var td = el('td', null, 'No products / projects yet — add one above.'); td.setAttribute('colspan', '3'); td.style.color = 'var(--ink-muted)'; er.appendChild(td); tb.appendChild(er); }
+        state.productsAdmin.forEach(function (p) {
+            var tr = el('tr');
+            tr.appendChild(el('td', null, p.name));
+            tr.appendChild(el('td', null, Number(p.active) ? 'Yes' : 'No'));
+            var ac = el('td', 'row-actions');
+            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-product'); edit.setAttribute('data-id', p.product_id); ac.appendChild(edit);
+            var tgl = el('button', 'btn-mini', Number(p.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-product'); tgl.setAttribute('data-id', p.product_id); tgl.setAttribute('data-active', Number(p.active) ? '1' : '0'); ac.appendChild(tgl);
+            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-product'); del.setAttribute('data-id', p.product_id); del.setAttribute('data-name', p.name); ac.appendChild(del);
+            tr.appendChild(ac);
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); card.appendChild(table); body.appendChild(card);
+    }
+    async function addProduct() {
+        var i = q('[data-newprod="name"]'); var r = await api('createProduct', { name: i ? i.value : '' });
+        toast(r && r.ok ? 'Product / project added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    function editProduct(id) { var p = (state.productsAdmin || []).find(function (x) { return x.product_id === id; }); if (p) { entityEditor('product', p); } }
+    async function toggleProduct(id, isActive) {
+        var r = await api('updateProduct', { product_id: id, active: isActive ? 0 : 1 });
+        toast(r && r.ok ? 'Updated' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+    async function deleteProduct(id, name) {
+        if (!window.confirm('Delete product / project "' + name + '"? (Blocked if any ticket still uses it — disable it instead.)')) { return; }
+        var r = await api('deleteProduct', { product_id: id });
+        toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
+    }
+
     // ── shared edit modal for category / organization ─────────────────────────
     function entityEditor(kind, row) {
         state.entityKind = kind;
-        state.entityId = kind === 'category' ? row.category_id : row.organization_id;
-        bind('entity-title', 'Edit ' + (kind === 'category' ? 'category' : 'organization'));
+        state.entityId = kind === 'category' ? row.category_id : (kind === 'product' ? row.product_id : row.organization_id);
+        bind('entity-title', 'Edit ' + (kind === 'category' ? 'category' : (kind === 'product' ? 'product / project' : 'organization')));
         var body = region('entity-body'); body.textContent = '';
         body.appendChild(field('Name', inp({ type: 'text', maxlength: kind === 'category' ? '60' : '120', 'data-entity': 'name', value: row.name || '' })));
         if (kind === 'category') {
@@ -639,6 +790,8 @@
             action = 'updateCategory';
             payload = { category_id: state.entityId, name: p.name, color: p.color };
             if ('parent_id' in p) { payload.parent_id = p.parent_id; } // only present when the selector was shown
+        } else if (state.entityKind === 'product') {
+            action = 'updateProduct'; payload = { product_id: state.entityId, name: p.name };
         } else { action = 'updateOrganization'; payload = { organization_id: state.entityId, name: p.name }; }
         var r = await api(action, payload);
         if (r && r.ok) { region('entity-modal').hidden = true; toast('Saved', 'success'); renderAdmin(); }
@@ -652,6 +805,12 @@
             orgSel.textContent = '';
             orgSel.appendChild(new Option('General / none', ''));
             (state.organizations || []).forEach(function (o) { orgSel.appendChild(new Option(o.name, o.organization_id)); });
+        }
+        var prodSel = region('new-product');
+        if (prodSel) {
+            prodSel.textContent = '';
+            prodSel.appendChild(new Option('— none —', ''));
+            (state.products || []).forEach(function (p) { prodSel.appendChild(new Option(p.name, p.product_id)); });
         }
         var catSel = region('new-category');
         if (catSel) {
@@ -755,13 +914,64 @@
         if (r && r.ok) { renderAdmin(); }
     }
 
+    // ── Audit log viewer (admin) ──────────────────────────────────────────────
+    var auditPage = 1, auditActor = '', auditAction = '';
+    async function renderAudit(body) {
+        var r = await api('listAuditLog', { page: auditPage, actor: auditActor, action: auditAction });
+        if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        var d = r.data;
+
+        var bar = el('div', 'admin-form-row'); bar.style.marginBottom = '12px';
+        var actorIn = inp({ type: 'search', placeholder: 'Filter by actor (email)…', 'data-auditf': 'actor' }); actorIn.value = auditActor; bar.appendChild(actorIn);
+        bar.appendChild(sel([['', 'All actions']].concat((d.actions || []).map(function (a) { return [a, a]; })), 'data-auditf', 'action', auditAction));
+        var go = el('button', 'btn-mini', 'Apply'); go.setAttribute('data-action', 'audit-apply'); bar.appendChild(go);
+        var vf = el('button', 'btn-mini', 'Verify chain'); vf.setAttribute('data-action', 'audit-verify'); bar.appendChild(vf);
+        var note = el('span', 'admin-form-hint'); note.setAttribute('data-bind', 'audit-chain'); note.style.marginLeft = '8px'; bar.appendChild(note);
+        body.appendChild(bar);
+
+        var card = el('div', 'table-card');
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        ['Time (UTC)', 'Actor', 'Action', 'Target', 'Details', 'IP'].forEach(function (h) { htr.appendChild(el('th', null, h)); });
+        thead.appendChild(htr); table.appendChild(thead);
+        var tb = el('tbody');
+        if (!(d.rows || []).length) { var er = el('tr'); var td = el('td', null, 'No audit entries match.'); td.setAttribute('colspan', '6'); td.style.color = 'var(--ink-muted)'; er.appendChild(td); tb.appendChild(er); }
+        (d.rows || []).forEach(function (a) {
+            var tr = el('tr');
+            tr.appendChild(el('td', null, shortDate(a.created_at)));
+            tr.appendChild(el('td', null, a.actor));
+            tr.appendChild(el('td', null, a.action));
+            tr.appendChild(el('td', null, a.target || '—'));
+            var dc = el('td', 'rule-summary', a.details || ''); dc.style.maxWidth = '260px'; tr.appendChild(dc);
+            tr.appendChild(el('td', null, a.ip_address || '—'));
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); card.appendChild(table); body.appendChild(card);
+
+        var pages = Math.max(1, Math.ceil(d.total / d.per_page));
+        var pag = el('div', 'admin-form-row'); pag.style.marginTop = '10px';
+        var prev = el('button', 'btn-mini', '‹ Newer'); prev.disabled = auditPage <= 1; prev.setAttribute('data-action', 'audit-page'); prev.setAttribute('data-page', String(auditPage - 1)); pag.appendChild(prev);
+        pag.appendChild(el('span', 'admin-form-hint', 'Page ' + auditPage + ' of ' + pages + ' · ' + d.total + ' entries'));
+        var next = el('button', 'btn-mini', 'Older ›'); next.disabled = auditPage >= pages; next.setAttribute('data-action', 'audit-page'); next.setAttribute('data-page', String(auditPage + 1)); pag.appendChild(next);
+        body.appendChild(pag);
+    }
+    async function verifyAuditChain() {
+        var note = q('[data-bind="audit-chain"]'); if (note) { note.textContent = 'Verifying…'; }
+        var r = await api('listAuditLog', { page: 1, verify: 1 });
+        if (!note) { return; }
+        if (r && r.ok && r.data.chain_ok) { note.textContent = '✓ Chain intact — no tampering detected.'; note.style.color = 'var(--success, #17B26A)'; }
+        else if (r && r.ok) { note.textContent = '⚠ Chain BROKEN at entry #' + r.data.chain_bad_id + ' — investigate!'; note.style.color = 'var(--danger, #F04438)'; }
+        else { note.textContent = (r && r.error) || 'Verification failed.'; }
+    }
+
     // ── Backup & data (run backup + danger zone reset) ────────────────────────
     function renderBackup(body) {
         var card = el('div', 'table-card'); var inner = el('div'); inner.style.padding = '20px';
         inner.appendChild(el('div', 'admin-form-title', 'Backup'));
-        inner.appendChild(el('p', 'admin-form-hint', 'Create an on-demand database backup. Backups are also produced automatically before any data reset.'));
+        inner.appendChild(el('p', 'admin-form-hint', 'Create an on-demand database backup. Backups are also produced automatically before any data reset. Download copies regularly and keep them OFF this server.'));
         var bk = el('button', 'btn-submit', 'Run backup now'); bk.setAttribute('data-action', 'run-backup'); inner.appendChild(bk);
+        var listHost = el('div'); listHost.setAttribute('data-region', 'backup-list'); listHost.style.marginTop = '16px'; inner.appendChild(listHost);
         card.appendChild(inner); body.appendChild(card);
+        loadBackupList();
 
         var danger = el('div', 'danger-zone');
         danger.appendChild(el('div', 'danger-title', 'Danger zone'));
@@ -776,6 +986,30 @@
     async function runBackup() {
         var r = await api('runBackup', {});
         toast(r && r.ok ? ('Backup created: ' + r.data.file) : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { loadBackupList(); }
+    }
+    async function loadBackupList() {
+        var host = region('backup-list'); if (!host) { return; }
+        var r = await api('listBackups', {});
+        host.textContent = '';
+        if (!r || !r.ok) { return; }
+        var files = r.data.backups || [];
+        if (!files.length) { host.appendChild(el('p', 'admin-form-hint', 'No backup files yet.')); return; }
+        var table = el('table'); var thead = el('thead'); var htr = el('tr');
+        ['File', 'Size', 'Created (UTC)', ''].forEach(function (h) { htr.appendChild(el('th', null, h)); });
+        thead.appendChild(htr); table.appendChild(thead);
+        var tb = el('tbody');
+        files.forEach(function (f) {
+            var tr = el('tr');
+            tr.appendChild(el('td', null, f.name));
+            tr.appendChild(el('td', null, (f.size_bytes / 1024).toFixed(1) + ' KB'));
+            tr.appendChild(el('td', null, shortDate(f.modified_at)));
+            var dc = el('td', 'row-actions');
+            var dl = el('a', 'btn-mini', 'Download'); dl.href = '/admin/backup/download?f=' + encodeURIComponent(f.name); dc.appendChild(dl);
+            tr.appendChild(dc);
+            tb.appendChild(tr);
+        });
+        table.appendChild(tb); host.appendChild(table);
     }
     async function resetData() {
         var i = q('[data-reset="confirm"]'); var phrase = i ? i.value : '';
@@ -796,13 +1030,26 @@
             var i2 = document.createElement('input'); i2.type = 'number'; i2.value = cfg['sla_resolution_' + tier] || ''; i2.setAttribute('data-sla', 'sla_resolution_' + tier); grid.appendChild(i2);
         });
         inner.appendChild(grid);
+
+        // Business-hours clock: SLA minutes only count inside the working window.
+        var bh = el('div'); bh.style.marginTop = '22px';
+        bh.appendChild(el('div', 'admin-form-title', 'SLA clock'));
+        var bhRow = el('div', 'admin-form-row');
+        bhRow.appendChild(sel([['0', 'Calendar time (24/7)'], ['1', 'Business hours only']], 'data-slacfg', 'sla_business_hours_only', String(cfg.sla_business_hours_only || '0')));
+        var st = inp({ type: 'time', 'data-slacfg': 'business_hours_start' }); st.value = cfg.business_hours_start || '08:00'; bhRow.appendChild(st);
+        var en = inp({ type: 'time', 'data-slacfg': 'business_hours_end' }); en.value = cfg.business_hours_end || '17:00'; bhRow.appendChild(en);
+        var dys = inp({ type: 'text', placeholder: '1,2,3,4,5', 'data-slacfg': 'business_days' }); dys.value = cfg.business_days || '1,2,3,4,5'; dys.style.maxWidth = '120px'; bhRow.appendChild(dys);
+        bh.appendChild(bhRow);
+        bh.appendChild(el('div', 'admin-form-hint', 'With "Business hours only", a ticket arriving outside the window starts its SLA clock at the next working period. Days: 1=Mon … 7=Sun, comma-separated. Existing tickets keep their deadlines; new tickets (and priority changes) use the new clock.'));
+        inner.appendChild(bh);
+
         var save = el('button', 'btn-submit', 'Save SLA targets'); save.style.marginTop = '18px'; save.setAttribute('data-action', 'save-sla'); inner.appendChild(save);
         card.appendChild(inner); body.appendChild(card);
     }
     async function renderConfig(body) {
         var r = await api('getSystemConfig', {}); var cfg = (r && r.ok) ? r.data.config : {};
         var card = el('div', 'table-card'); var form = el('div', 'config-form'); form.style.padding = '20px';
-        [['company_name', 'Company name'], ['support_email', 'Support email'], ['portal_title', 'Portal title'], ['portal_tagline', 'Portal tagline'], ['ticket_prefix', 'Ticket prefix']].forEach(function (pair) {
+        [['company_name', 'Company name'], ['support_email', 'Support email'], ['portal_title', 'Portal title'], ['portal_tagline', 'Portal tagline'], ['ticket_prefix', 'Ticket prefix'], ['auto_close_days', 'Auto-close resolved tickets after (days, 0 = off)']].forEach(function (pair) {
             var f = el('div', 'field'); f.appendChild(el('label', null, pair[1])); var i = document.createElement('input'); i.value = cfg[pair[0]] || ''; i.setAttribute('data-cfg', pair[0]); f.appendChild(i); form.appendChild(f);
         });
         // Security: require two-factor authentication for admin accounts.
@@ -814,7 +1061,11 @@
     }
     async function saveSla() {
         var payload = {}; qa('[data-sla]').forEach(function (i) { payload[i.getAttribute('data-sla')] = i.value; });
-        var r = await api('updateSlaTargets', payload); toast(r && r.ok ? 'SLA saved' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        var r = await api('updateSlaTargets', payload);
+        if (!(r && r.ok)) { toast((r && r.error) || 'Failed', 'danger'); return; }
+        var cfgPayload = {}; qa('[data-slacfg]').forEach(function (i) { cfgPayload[i.getAttribute('data-slacfg')] = i.value; });
+        var r2 = await api('updateConfig', cfgPayload);
+        toast(r2 && r2.ok ? 'SLA saved' : ((r2 && r2.error) || 'Failed'), r2 && r2.ok ? 'success' : 'danger');
     }
     async function saveConfig() {
         var payload = {}; qa('[data-cfg]').forEach(function (i) { payload[i.getAttribute('data-cfg')] = i.value; });
@@ -854,6 +1105,8 @@
         else if (a === 'page') { state.page[t.getAttribute('data-view')] = parseInt(t.getAttribute('data-page'), 10); renderList(t.getAttribute('data-view')); }
         else if (a === 'report-period') { reportPeriod = parseInt(t.getAttribute('data-period'), 10); renderReports(); }
         else if (a === 'admin-tab') { adminTab = t.getAttribute('data-tab'); renderAdmin(); }
+        else if (a === 'clear-list-filters') { clearListFilters(); }
+        else if (a === 'report-dim') { reportDim = t.getAttribute('data-dim'); qa('[data-action="report-dim"]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-dim') === reportDim); }); drawBreakdown(); }
         else if (a === 'save-sla') { saveSla(); }
         else if (a === 'save-config') { saveConfig(); }
         else if (a === 'add-user') { addUser(); }
@@ -868,6 +1121,10 @@
         else if (a === 'edit-organization') { editOrganization(t.getAttribute('data-id')); }
         else if (a === 'toggle-organization') { toggleOrganization(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
         else if (a === 'delete-organization') { deleteOrganization(t.getAttribute('data-id'), t.getAttribute('data-name')); }
+        else if (a === 'add-product') { addProduct(); }
+        else if (a === 'edit-product') { editProduct(t.getAttribute('data-id')); }
+        else if (a === 'toggle-product') { toggleProduct(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
+        else if (a === 'delete-product') { deleteProduct(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'save-entity') { saveEntity(); }
         else if (a === 'close-entity') { region('entity-modal').hidden = true; }
         else if (a === 'add-rule') { addRule(); }
@@ -876,6 +1133,9 @@
         else if (a === 'toggle-rule') { toggleRule(t.getAttribute('data-id'), t.getAttribute('data-enabled') === '1'); }
         else if (a === 'delete-rule') { deleteRule(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'run-backup') { runBackup(); }
+        else if (a === 'audit-apply') { auditActor = (q('[data-auditf="actor"]') || {}).value || ''; auditAction = (q('[data-auditf="action"]') || {}).value || ''; auditPage = 1; renderAdmin(); }
+        else if (a === 'audit-page') { auditPage = Math.max(1, parseInt(t.getAttribute('data-page'), 10) || 1); renderAdmin(); }
+        else if (a === 'audit-verify') { verifyAuditChain(); }
         else if (a === 'reset-data') { resetData(); }
         else if (a === 'open-change-pw') { openChangePw(false); }
         else if (a === 'close-change-pw') { closeChangePw(); }
@@ -886,7 +1146,13 @@
         else if (a === 'save-kb') { saveKb(); }
         else if (a === 'close-kb') { region('kb-modal').hidden = true; }
     });
+    document.addEventListener('input', function (e) {
+        var lf = e.target.getAttribute && e.target.getAttribute('data-listfilter');
+        if (lf) { onListFilterChange(lf, e.target.value); }
+    });
     document.addEventListener('change', function (e) {
+        var lf = e.target.getAttribute && e.target.getAttribute('data-listfilter');
+        if (lf) { onListFilterChange(lf, e.target.value); return; }
         var a = e.target.getAttribute && e.target.getAttribute('data-action'); if (!a) { return; }
         if (a === 'change-status') { changeField('changeStatus', 'status', e.target.value); }
         else if (a === 'change-priority') { changeField('changePriority', 'priority', e.target.value); }

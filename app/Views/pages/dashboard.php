@@ -92,6 +92,11 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
           <button type="button" class="signout-btn" data-action="open-change-pw" title="Change password">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </button>
+          <?php if (in_array((string) $role, ['admin', 'org_admin', 'agent'], true)): ?>
+            <a class="signout-btn" href="<?= e(url('mfa')) ?>?manage=1" title="Two-factor authentication" style="display:inline-flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </a>
+          <?php endif; ?>
           <form method="post" action="<?= e(url('logout')) ?>" style="margin:0;">
             <?= csrf_field() ?>
             <button type="submit" class="signout-btn" title="Sign out">
@@ -137,6 +142,7 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
       <div class="detail-side">
         <div class="side-block"><label>Customer</label><div class="side-value" data-bind="d-customer"></div><div class="side-sub" data-bind="d-email"></div></div>
         <div class="side-block"><label>Organization</label><div class="side-value" data-bind="d-organization"></div></div>
+        <div class="side-block"><label>Product / Project</label><div class="side-value" data-bind="d-product"></div></div>
         <div class="side-block"><label>Status</label>
           <select class="side-select" data-action="change-status"><option value="open">Open</option><option value="pending">Pending</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select>
         </div>
@@ -166,6 +172,7 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
         <div class="field"><label>Customer name</label><input type="text" name="customer_name" maxlength="120"></div>
         <div class="field"><label>Customer email</label><input type="email" name="customer_email" required maxlength="254"></div>
         <div class="field"><label>Organization</label><select name="organization_id" data-region="new-org"><option value="">General / none</option></select></div>
+        <div class="field"><label>Product / Project</label><select name="product_id" data-region="new-product"><option value="">— none —</option></select></div>
         <div class="field"><label>Category</label><select name="category_id" data-region="new-category"><option value="">— none —</option></select></div>
         <div class="field"><label>Priority</label><select name="priority"><option value="urgent">Urgent</option><option value="high">High</option><option value="normal" selected>Normal</option><option value="low">Low</option></select></div>
         <div class="field"><label>Description</label><textarea name="description" required rows="4" maxlength="5000"></textarea></div>

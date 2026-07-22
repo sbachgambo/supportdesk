@@ -5,6 +5,7 @@ namespace App\Security;
 
 use App\Core\Session;
 use App\Models\Ticket;
+use App\Models\User;
 
 /**
  * Rbac (§10.5) — access-control primitives. DEFAULT DENY.
@@ -80,14 +81,24 @@ final class Rbac
 
     /**
      * Ownership check (D2, §10.5) for the current session over a ticket.
-     * Staff (agent/admin) bypass by role. A customer owns a ticket when it is linked
-     * to their user id, OR the ticket's customer_email matches their account email
-     * (covers tickets raised anonymously before their account existed).
+     * Staff access is ORG-SCOPED (multi-tenancy): a system admin covers every
+     * organization; an agent or org admin only "owns" tickets inside their own
+     * organization (org-less staff cover the general/NULL queue). This is the gate
+     * for uploads, downloads and the 'owner'-gated actions, so the tenant boundary
+     * holds on those paths too — not just the ticket lists. A customer owns a ticket
+     * when it is linked to their user id, OR the ticket's customer_email matches
+     * their account email (covers tickets raised anonymously before their account
+     * existed).
      */
     public static function ownsTicket(string $ticketId): bool
     {
-        if (self::isAtLeastAgent()) {
+        if (self::isAdmin()) {
             return true;
+        }
+        if (self::isAtLeastAgent()) {
+            $me = User::findById((int) Session::userId());
+            $org = (string) ($me['organization_id'] ?? '');
+            return Ticket::inScope($ticketId, false, $org === '' ? null : $org);
         }
         if (!self::isAuthenticated()) {
             return false;

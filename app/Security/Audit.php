@@ -62,6 +62,46 @@ final class Audit
     }
 
     /**
+     * Paged read for the admin viewer (§3). WHERE is fully static with bound
+     * sentinels (empty = no filter, §10.1); actor matches as a substring, action
+     * matches exactly (it comes from the distinct-actions dropdown).
+     *
+     * @return array{rows:array<int,array<string,mixed>>, total:int}
+     */
+    public static function paged(string $actor, string $action, int $page, int $perPage = 25): array
+    {
+        $params = [
+            ':actor_a' => $actor, ':actor_b' => '%' . $actor . '%',
+            ':action_a' => $action, ':action_b' => $action,
+        ];
+        $total = (int) Db::scalar(
+            "SELECT COUNT(*) FROM audit_log
+             WHERE (:actor_a = '' OR actor LIKE :actor_b)
+               AND (:action_a = '' OR action = :action_b)",
+            $params
+        );
+        $params[':limit'] = $perPage;
+        $params[':offset'] = (max(1, $page) - 1) * $perPage;
+        $rows = Db::queryAll(
+            "SELECT id, actor, action, target, details, ip_address, created_at
+             FROM audit_log
+             WHERE (:actor_a = '' OR actor LIKE :actor_b)
+               AND (:action_a = '' OR action = :action_b)
+             ORDER BY id DESC
+             LIMIT :limit OFFSET :offset",
+            $params
+        );
+        return ['rows' => $rows, 'total' => $total];
+    }
+
+    /** Distinct action names for the viewer's filter dropdown. */
+    public static function actionNames(): array
+    {
+        $rows = Db::queryAll('SELECT DISTINCT action FROM audit_log ORDER BY action');
+        return array_map(static fn(array $r): string => (string) $r['action'], $rows);
+    }
+
+    /**
      * Walk the chain in order; return the id of the first row whose stored hash does
      * not match a recomputation (or whose prev_hash breaks linkage), or null if intact.
      */

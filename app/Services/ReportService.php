@@ -58,12 +58,19 @@ final class ReportService
             [':s' => $start] + $scope
         );
         $compliance = $graded > 0 ? round($met / $graded * 100, 1) : null;
+        $csat = Db::queryOne(
+            "SELECT AVG(csat_rating) AS avg_rating, COUNT(csat_rating) AS rated
+             FROM tickets WHERE created_at >= :s AND csat_rating IS NOT NULL AND (:all_orgs = 1 OR organization_id <=> :org)",
+            [':s' => $start] + $scope
+        );
 
         return [
             'created'             => $created,
             'resolved'            => $resolved,
             'avg_resolution_hours' => $avgHours === null ? null : round((float) $avgHours, 1),
             'sla_compliance_pct'  => $compliance,
+            'csat_avg'            => ($csat['avg_rating'] ?? null) === null ? null : round((float) $csat['avg_rating'], 1),
+            'csat_count'          => (int) ($csat['rated'] ?? 0),
         ];
     }
 
@@ -126,14 +133,15 @@ final class ReportService
                     ROUND(AVG(CASE WHEN t.resolved_at IS NOT NULL AND t.resolved_at >= :s3
                               THEN TIMESTAMPDIFF(MINUTE, t.created_at, t.resolved_at) END) / 60, 1) AS avg_hours,
                     SUM(CASE WHEN t.created_at >= :s4 AND t.sla_resolution_status = 'met' THEN 1 ELSE 0 END) AS sla_met,
-                    SUM(CASE WHEN t.created_at >= :s5 AND t.sla_resolution_status IN ('met','breached') THEN 1 ELSE 0 END) AS sla_graded
+                    SUM(CASE WHEN t.created_at >= :s5 AND t.sla_resolution_status IN ('met','breached') THEN 1 ELSE 0 END) AS sla_graded,
+                    ROUND(AVG(CASE WHEN t.created_at >= :s6 THEN t.csat_rating END), 1) AS csat_avg
              FROM users u
              LEFT JOIN tickets t ON t.assigned_to = u.email
              WHERE u.role IN ('agent','org_admin','admin') AND u.active = 1
                AND (:all_orgs = 1 OR u.organization_id <=> :org)
              GROUP BY u.email, u.name
              ORDER BY resolved DESC, u.name ASC",
-            [':s1' => $start, ':s2' => $start, ':s3' => $start, ':s4' => $start, ':s5' => $start,
+            [':s1' => $start, ':s2' => $start, ':s3' => $start, ':s4' => $start, ':s5' => $start, ':s6' => $start,
              ':all_orgs' => $allOrgs ? 1 : 0, ':org' => $orgId]
         );
     }
@@ -150,20 +158,102 @@ final class ReportService
         ];
     }
 
-    // ── CSV export (RFC 4180) ────────────────────────────────────────────────
-    public static function ticketsCsv(int $period, bool $allOrgs = true, ?string $orgId = null): string
+    /**
+     * Group tickets created in the period by ONE dimension, with a resolved count.
+     * $dimension is matched against a HARDCODED allowlist — the SQL for each case is a
+     * literal, nothing from the request is ever interpolated into the query (§10.1).
+     *
+     * @return array<int,array{label:string,total:int,resolved:int}>
+     */
+    public static function grouped(string $dimension, int $period, bool $allOrgs = true, ?string $orgId = null): array
     {
         $days = self::normalizePeriod($period);
-        $start = self::startDate($days);
+        $scope = [':s' => self::startDate($days), ':all_orgs' => $allOrgs ? 1 : 0, ':org' => $orgId];
+        // Each arm is a FULLY LITERAL query (no interpolation, §10.1); only bound
+        // params (:s/:all_orgs/:org) vary. The dimension picks the arm; it is never
+        // spliced into SQL.
+        $sql = match ($dimension) {
+            'product'  => "SELECT COALESCE(p.name, '— none —') AS label, COUNT(*) AS total, SUM(t.resolved_at IS NOT NULL) AS resolved
+                           FROM tickets t LEFT JOIN products p ON p.product_id = t.product_id
+                           WHERE t.created_at >= :s AND (:all_orgs = 1 OR t.organization_id <=> :org)
+                           GROUP BY t.product_id, label ORDER BY total DESC, label ASC",
+            'category' => "SELECT COALESCE(c.name, '— none —') AS label, COUNT(*) AS total, SUM(t.resolved_at IS NOT NULL) AS resolved
+                           FROM tickets t LEFT JOIN categories c ON c.category_id = t.category_id
+                           WHERE t.created_at >= :s AND (:all_orgs = 1 OR t.organization_id <=> :org)
+                           GROUP BY t.category_id, label ORDER BY total DESC, label ASC",
+            'agent'    => "SELECT COALESCE(NULLIF(t.assigned_to, ''), '— unassigned —') AS label, COUNT(*) AS total, SUM(t.resolved_at IS NOT NULL) AS resolved
+                           FROM tickets t
+                           WHERE t.created_at >= :s AND (:all_orgs = 1 OR t.organization_id <=> :org)
+                           GROUP BY t.assigned_to ORDER BY total DESC, label ASC",
+            'status'   => "SELECT t.status AS label, COUNT(*) AS total, SUM(t.resolved_at IS NOT NULL) AS resolved
+                           FROM tickets t
+                           WHERE t.created_at >= :s AND (:all_orgs = 1 OR t.organization_id <=> :org)
+                           GROUP BY t.status ORDER BY total DESC, label ASC",
+            'priority' => "SELECT t.priority AS label, COUNT(*) AS total, SUM(t.resolved_at IS NOT NULL) AS resolved
+                           FROM tickets t
+                           WHERE t.created_at >= :s AND (:all_orgs = 1 OR t.organization_id <=> :org)
+                           GROUP BY t.priority ORDER BY total DESC, label ASC",
+            default    => throw new \InvalidArgumentException('bad dimension'),
+        };
+        return array_map(
+            static fn(array $r): array => [
+                'label'    => (string) $r['label'],
+                'total'    => (int) $r['total'],
+                'resolved' => (int) $r['resolved'],
+            ],
+            Db::queryAll($sql, $scope)
+        );
+    }
+
+    /** The dimensions grouped() accepts (allowlist shared with the controller). */
+    public const GROUP_DIMENSIONS = ['product', 'category', 'agent', 'status', 'priority'];
+
+    // ── CSV export (RFC 4180) ────────────────────────────────────────────────
+    /**
+     * Export tickets created in the period, optionally narrowed by a bound filter set
+     * (status, priority, product_id, category_id, assigned_to, q). Every filter is a
+     * sentinel-guarded bound parameter — an empty value means "no filter" (§10.1).
+     */
+    public static function ticketsCsv(int $period, bool $allOrgs = true, ?string $orgId = null, array $filters = []): string
+    {
+        $days = self::normalizePeriod($period);
+        $status   = (string) ($filters['status'] ?? '');
+        $priority = (string) ($filters['priority'] ?? '');
+        $product  = (string) ($filters['product_id'] ?? '');
+        $category = (string) ($filters['category_id'] ?? '');
+        $assignee = (string) ($filters['assigned_to'] ?? '');
+        $q        = (string) ($filters['q'] ?? '');
+        $like     = '%' . $q . '%';
+
+        $params = [
+            ':s' => self::startDate($days), ':all_orgs' => $allOrgs ? 1 : 0, ':org' => $orgId,
+            ':status_a' => $status, ':status_b' => $status,
+            ':prio_a' => $priority, ':prio_b' => $priority,
+            ':prod_a' => $product, ':prod_b' => $product,
+            ':cat_a' => $category, ':cat_b' => $category,
+            ':asg_a' => $assignee, ':asg_b' => $assignee,
+            ':q_a' => $q, ':q_like1' => $like, ':q_like2' => $like,
+        ];
         $rows = Db::queryAll(
-            "SELECT ticket_id, subject, customer_email, priority, status, channel, assigned_to,
-                    created_at, resolved_at, sla_response_status, sla_resolution_status, csat_rating
-             FROM tickets WHERE created_at >= :s AND (:all_orgs = 1 OR organization_id <=> :org)
-             ORDER BY created_at ASC",
-            [':s' => $start, ':all_orgs' => $allOrgs ? 1 : 0, ':org' => $orgId]
+            "SELECT t.ticket_id, t.subject, t.customer_email,
+                    COALESCE(p.name, '') AS product, COALESCE(c.name, '') AS category,
+                    t.priority, t.status, t.channel, t.assigned_to,
+                    t.created_at, t.resolved_at, t.sla_response_status, t.sla_resolution_status, t.csat_rating
+             FROM tickets t
+             LEFT JOIN products p ON p.product_id = t.product_id
+             LEFT JOIN categories c ON c.category_id = t.category_id
+             WHERE t.created_at >= :s AND (:all_orgs = 1 OR t.organization_id <=> :org)
+               AND (:status_a = '' OR t.status = :status_b)
+               AND (:prio_a = '' OR t.priority = :prio_b)
+               AND (:prod_a = '' OR t.product_id = :prod_b)
+               AND (:cat_a = '' OR t.category_id = :cat_b)
+               AND (:asg_a = '' OR t.assigned_to = :asg_b)
+               AND (:q_a = '' OR t.subject LIKE :q_like1 OR t.customer_email LIKE :q_like2)
+             ORDER BY t.created_at ASC",
+            $params
         );
 
-        $header = ['ticket_id', 'subject', 'customer_email', 'priority', 'status', 'channel',
+        $header = ['ticket_id', 'subject', 'customer_email', 'product', 'category', 'priority', 'status', 'channel',
                    'assigned_to', 'created_at', 'resolved_at', 'sla_response_status', 'sla_resolution_status', 'csat_rating'];
         $out = self::csvRow($header);
         foreach ($rows as $r) {
