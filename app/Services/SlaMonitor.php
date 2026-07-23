@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Db;
+use App\Models\Ticket;
 use App\Security\Audit;
 
 /**
@@ -64,6 +65,11 @@ final class SlaMonitor
                 'SLA breach',
                 "<p>The {$kind} SLA for ticket <strong>{$ticketId}</strong> has been breached.</p>"
             );
+        }
+        // Optional Slack alert (no-op unless a webhook is configured; never throws).
+        $ticket = Ticket::find($ticketId);
+        if ($ticket !== null) {
+            SlackNotifier::slaBreach($ticket, $kind);
         }
     }
 }

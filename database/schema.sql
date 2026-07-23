@@ -14,7 +14,7 @@ CREATE TABLE users (
   name           VARCHAR(120) NOT NULL,
   email          VARCHAR(254) UNIQUE NOT NULL,
   password_hash  VARCHAR(255) NOT NULL,                    -- password_hash(); accepts legacy "v2$salt$hash"
-  role           ENUM('admin','org_admin','agent','customer') NOT NULL DEFAULT 'customer',
+  role           ENUM('super_admin','admin','org_admin','agent','customer') NOT NULL DEFAULT 'customer',
   active         TINYINT(1) NOT NULL DEFAULT 1,
   totp_secret    VARBINARY(255) NULL,                      -- encrypted with APP_KEY; NULL = not enrolled
   totp_enabled   TINYINT(1) NOT NULL DEFAULT 0,
@@ -231,7 +231,7 @@ CREATE TABLE sessions (
   token_hash   CHAR(64) PRIMARY KEY,                       -- sha256 of the raw cookie value
   user_id      INT UNSIGNED NOT NULL,
   email        VARCHAR(254) NOT NULL,
-  role         ENUM('admin','org_admin','agent','customer') NOT NULL,
+  role         ENUM('super_admin','admin','org_admin','agent','customer') NOT NULL,
   ip_address   VARCHAR(45) NOT NULL,
   user_agent   VARCHAR(255) NOT NULL DEFAULT '',
   mfa_verified TINYINT(1) NOT NULL DEFAULT 0,              -- admin sessions unusable until 1

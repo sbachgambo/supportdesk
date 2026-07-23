@@ -38,7 +38,7 @@ $router->get('/admin/rules', static function (Request $request): Response {
     if (!Session::isMfaVerified()) {
         return redirect('mfa');
     }
-    if (Session::role() !== 'admin') {
+    if (!\App\Security\Rbac::isAdmin()) {
         return redirect('dashboard');
     }
     return Response::html(View::render('rules', [
@@ -61,7 +61,7 @@ $router->get('/admin/backup/download', static function (Request $request): Respo
     if (!Session::isMfaVerified()) {
         return redirect('mfa');
     }
-    if (Session::role() !== 'admin') {
+    if (!\App\Security\Rbac::isAdmin()) {
         return redirect('dashboard');
     }
     $name = (string) ($request->query('f') ?? '');
@@ -100,13 +100,16 @@ $router->get('/reports', static function (Request $request): Response {
     ], 'app'));
 });
 
-// Landing page (public). Full landing is built in Phase 9; this is the shell.
+// Landing page (public). Brand name + tagline come from config, so renaming the
+// helpdesk in Admin → System re-brands this first page too.
 $router->get('/', static function (Request $request): Response {
-    $html = View::render('landing', [
-        'company' => Config::string('APP_URL'),
-        'title'   => 'P3A Support',
-    ]);
-    return Response::html($html);
+    $company = \App\Models\AppConfig::get('company_name', 'Support');
+    return Response::html(View::render('landing', [
+        'title'      => $company,
+        'company'    => $company,
+        'tagline'    => \App\Models\AppConfig::get('portal_tagline', 'How can we help you today?'),
+        'pageScript' => 'landing.js',
+    ], 'bare'));
 });
 
 // ── Auth (§9, §10.3, §10.9) ──
@@ -125,7 +128,7 @@ $router->get('/mfa', static function (Request $request): Response {
         return redirect('login');
     }
     $manage = $request->query('manage') === '1'
-        && in_array((string) Session::role(), ['admin', 'org_admin', 'agent'], true);
+        && in_array((string) Session::role(), ['super_admin', 'admin', 'org_admin', 'agent'], true);
     if (Session::isMfaVerified() && !$manage) {
         return redirect('dashboard');
     }
@@ -152,8 +155,8 @@ $router->get('/dashboard', static function (Request $request): Response {
         'email'      => (string) Session::email(),
         'name'       => (string) ($me['name'] ?? Session::email()),
         'role'       => (string) Session::role(),
-        'isAdmin'    => Session::role() === 'admin',
-        'canAdmin'   => in_array(Session::role(), ['admin', 'org_admin'], true),
+        'isAdmin'    => \App\Security\Rbac::isAdmin(),
+        'canAdmin'   => \App\Security\Rbac::isAtLeastOrgAdmin(),
         'csrf'       => \App\Core\Csrf::token(),
         'company'    => \App\Models\AppConfig::get('company_name', 'SupportDesk'),
         'pageScript' => 'dashboard.js',

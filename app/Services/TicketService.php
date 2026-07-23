@@ -153,6 +153,8 @@ final class TicketService
         // Submission receipt: the customer gets their reference number by email (§3).
         // Mailer handles suppression/pretend and never throws — this cannot break creation.
         CustomerMail::ticketCreated($ticket);
+        // Optional Slack alert (no-op unless a webhook is configured; never throws).
+        SlackNotifier::ticketCreated($ticket);
 
         return ['ok' => true, 'ticket' => $ticket];
     }

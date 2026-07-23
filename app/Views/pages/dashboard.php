@@ -92,7 +92,7 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
           <button type="button" class="signout-btn" data-action="open-change-pw" title="Change password">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </button>
-          <?php if (in_array((string) $role, ['admin', 'org_admin', 'agent'], true)): ?>
+          <?php if (in_array((string) $role, ['super_admin', 'admin', 'org_admin', 'agent'], true)): ?>
             <a class="signout-btn" href="<?= e(url('mfa')) ?>?manage=1" title="Two-factor authentication" style="display:inline-flex;align-items:center;justify-content:center;">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </a>
@@ -180,6 +180,17 @@ $themeToggle = '<button type="button" class="theme-btn" data-action="toggle-them
         <button type="submit" class="btn-submit">Create ticket</button>
       </form>
     </div>
+  </div>
+</div>
+
+<?php // ── user edit modal (Agents tab) ── ?>
+<div class="modal-overlay" data-region="user-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Edit user</div>
+      <button type="button" class="modal-close" data-action="close-user">&times;</button>
+    </div>
+    <div class="modal-body" data-region="user-body"></div>
   </div>
 </div>
 

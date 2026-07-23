@@ -30,7 +30,7 @@ final class AdminActions
     private const CONFIG_ALLOWLIST = [
         'company_name', 'support_email', 'portal_title', 'portal_tagline',
         'brand_color', 'ticket_prefix', 'business_hours_start', 'business_hours_end', 'business_days',
-        'require_admin_mfa', 'auto_close_days', 'sla_business_hours_only',
+        'require_admin_mfa', 'auto_close_days', 'sla_business_hours_only', 'slack_webhook_url',
     ];
 
     // ── users / agents CRUD ──────────────────────────────────────────────────
@@ -143,6 +143,17 @@ final class AdminActions
                 throw new ValidationException('Name must be 1–120 characters.');
             }
             $fields['name'] = $name;
+        }
+        if (isset($payload['email'])) {
+            $email = strtolower(trim((string) $payload['email']));
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
+                throw new ValidationException('A valid email is required.');
+            }
+            $existing = User::findByEmail($email);
+            if ($existing !== null && (int) $existing['id'] !== (int) $target['id']) {
+                throw new ValidationException('Another user already has that email.');
+            }
+            $fields['email'] = $email;
         }
         // Role + organization changes are system-admin only.
         if ($sysAdmin && isset($payload['role'])) {
@@ -279,6 +290,10 @@ final class AdminActions
             if ($key === 'business_days' && $value !== '' && !preg_match('/^[1-7](,[1-7])*$/', $value)) {
                 throw new ValidationException('Business days must be a comma list of 1–7 (Mon=1 … Sun=7).');
             }
+            if ($key === 'slack_webhook_url' && $value !== ''
+                && !(filter_var($value, FILTER_VALIDATE_URL) && stripos($value, 'https://') === 0)) {
+                throw new ValidationException('Slack webhook must be an https:// URL (or leave it blank to disable).');
+            }
             $updates[$key] = mb_substr($value, 0, 255);
         }
         // Keys NOT in the allowlist are silently ignored — never mass-assigned (§10.5).
@@ -352,7 +367,8 @@ final class AdminActions
     /** Caller context for user management: [bool $isSystemAdmin, ?string $orgId]. */
     private function callerCtx(): array
     {
-        if ((string) Session::role() === 'admin') {
+        // Super admin manages everyone, exactly like a system admin.
+        if (in_array((string) Session::role(), ['admin', 'super_admin'], true)) {
             return [true, null];
         }
         $me = User::findById((int) Session::userId());
@@ -366,6 +382,11 @@ final class AdminActions
      */
     private function requireManageable(array $target): void
     {
+        // The super admin is the protected owner: NOBODY can edit/deactivate/delete/
+        // reset it through the app — not even a system admin (or another super admin).
+        if ((string) $target['role'] === 'super_admin') {
+            throw new ValidationException('This account is protected and cannot be managed.');
+        }
         [$sysAdmin, $orgId] = $this->callerCtx();
         if ($sysAdmin) {
             return;

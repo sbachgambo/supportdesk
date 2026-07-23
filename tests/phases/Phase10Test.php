@@ -28,6 +28,7 @@ use App\Services\DigestService;
 use App\Services\InboundMail;
 use App\Services\Mailer;
 use App\Services\SlaCalculator;
+use App\Services\SlackNotifier;
 use App\Services\SlaMonitor;
 use App\Services\TicketService;
 
@@ -209,6 +210,18 @@ AppConfig::set('sla_business_hours_only', '0');
 $calDl = SlaCalculator::deadlines('urgent', $fri);
 T::ok($bizDl['resolution'] !== $calDl['resolution'], 'business-hours toggle changes computed deadlines');
 T::eq(gmdate('Y-m-d H:i:s', strtotime($fri) + ((int) AppConfig::get('sla_resolution_urgent', '0')) * 60), $calDl['resolution'], 'toggle off → plain calendar deadlines (unchanged behaviour)');
+
+// ── Slack notifications (optional webhook) ───────────────────────────────────
+T::suite('Phase 10: Slack notifications');
+$slTicket = TicketService::create(['subject' => 'Slack <test> & co', 'description' => 'd', 'customer_email' => 'sl@othercorp.com', 'customer_name' => 'S', 'priority' => 'high'], 'web_form')['ticket'];
+AppConfig::set('slack_webhook_url', ''); // disabled by default
+T::eq('disabled', SlackNotifier::ticketCreated($slTicket), 'no webhook configured → Slack is a no-op');
+AppConfig::set('slack_webhook_url', 'http://not-https.example/hook');
+T::eq('disabled', SlackNotifier::ticketCreated($slTicket), 'non-https webhook is ignored (disabled)');
+AppConfig::set('slack_webhook_url', 'https://hooks.slack.com/services/T000/B000/XXXXXXXX');
+T::eq('pretend', SlackNotifier::ticketCreated($slTicket), 'configured webhook → new-ticket alert sent (pretend in dev)');
+T::eq('pretend', SlackNotifier::slaBreach($slTicket, 'response'), 'configured webhook → SLA-breach alert sent (pretend in dev)');
+AppConfig::set('slack_webhook_url', ''); // reset so later assertions are unaffected
 
 foreach ($cleanupFiles as $f) {
     if (is_file($f)) { unlink($f); }

@@ -29,10 +29,20 @@ final class Rbac
         return Session::role();
     }
 
-    /** System Admin — the super admin (cross-organization, all system config). */
+    /** System Super Admin — the protected, hidden owner. Above System Admin in every check. */
+    public static function isSuperAdmin(): bool
+    {
+        return Session::role() === 'super_admin';
+    }
+
+    /**
+     * System Admin tier — a full, cross-organization administrator. The Super Admin
+     * satisfies this everywhere (it is strictly above System Admin), so all admin-gated
+     * authz, org scope, and MFA logic apply to it too.
+     */
     public static function isAdmin(): bool
     {
-        return Session::role() === 'admin';
+        return in_array(Session::role(), ['admin', 'super_admin'], true);
     }
 
     /** Organization Admin — scoped to their own organization's data + agents. */
@@ -41,16 +51,16 @@ final class Rbac
         return Session::role() === 'org_admin';
     }
 
-    /** org_admin and admin — the "manage users" tier (org_admin is scoped in handlers). */
+    /** org_admin and admin (+ super admin) — the "manage users" tier. */
     public static function isAtLeastOrgAdmin(): bool
     {
-        return in_array(Session::role(), ['org_admin', 'admin'], true);
+        return in_array(Session::role(), ['org_admin', 'admin', 'super_admin'], true);
     }
 
-    /** Staff — agent, org_admin, admin. Reads are org-scoped for non-admins downstream. */
+    /** Staff — agent, org_admin, admin, super_admin. Reads are org-scoped for non-admins. */
     public static function isAtLeastAgent(): bool
     {
-        return in_array(Session::role(), ['agent', 'org_admin', 'admin'], true);
+        return in_array(Session::role(), ['agent', 'org_admin', 'admin', 'super_admin'], true);
     }
 
     public static function isCustomer(): bool

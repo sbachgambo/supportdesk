@@ -489,7 +489,7 @@
 
     // ── admin (full: agents + categories + SLA + system + rules + backup) ─────
     var adminTab = 'agents';
-    function isSysAdmin() { return !!(state.me && state.me.role === 'admin'); }
+    function isSysAdmin() { return !!(state.me && (state.me.role === 'admin' || state.me.role === 'super_admin')); }
     async function renderAdmin() {
         var c = region('content'); c.textContent = '';
         var sys = isSysAdmin();
@@ -523,6 +523,7 @@
     // ── Agents: add + activate/deactivate + reset password + delete ───────────
     async function renderAgents(body) {
         var r = await api('listUsers', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
+        state.usersCache = r.data.users || [];
 
         var sys = isSysAdmin();
         var form = el('div', 'admin-form');
@@ -560,6 +561,7 @@
             tr.appendChild(oc);
             tr.appendChild(el('td', null, Number(u.active) ? 'Yes' : 'No'));
             var ac = el('td', 'row-actions');
+            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-user'); edit.setAttribute('data-id', u.id); ac.appendChild(edit);
             var tgl = el('button', 'btn-mini', Number(u.active) ? 'Deactivate' : 'Activate');
             tgl.setAttribute('data-action', 'toggle-user'); tgl.setAttribute('data-id', u.id); tgl.setAttribute('data-active', Number(u.active) ? '1' : '0'); ac.appendChild(tgl);
             var pw = el('button', 'btn-mini', 'Reset PW'); pw.setAttribute('data-action', 'reset-user-pw'); pw.setAttribute('data-id', u.id); pw.setAttribute('data-email', u.email); ac.appendChild(pw);
@@ -596,16 +598,42 @@
         toast(r && r.ok ? 'Deleted' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
         if (r && r.ok) { renderAdmin(); }
     }
+    // Edit a user: name/email for any manager; role + organization for system admins only.
+    function openUserEditor(id) {
+        var u = (state.usersCache || []).find(function (x) { return String(x.id) === String(id); });
+        if (!u) { return; }
+        state.userEditId = id;
+        var body = region('user-body'); body.textContent = '';
+        body.appendChild(field('Name', inp({ type: 'text', maxlength: '120', 'data-useredit': 'name', value: u.name || '' })));
+        body.appendChild(field('Email', inp({ type: 'email', maxlength: '254', 'data-useredit': 'email', value: u.email || '' })));
+        if (isSysAdmin()) {
+            body.appendChild(field('Role', sel([['agent', 'Agent'], ['org_admin', 'Organization Admin'], ['admin', 'System Admin']], 'data-useredit', 'role', u.role)));
+            var orgOpts = [['', 'No organization']].concat((state.organizations || []).map(function (o) { return [o.organization_id, o.name]; }));
+            body.appendChild(field('Organization', sel(orgOpts, 'data-useredit', 'organization_id', u.organization_id || '')));
+        }
+        var err = el('div', 'alert error'); err.setAttribute('data-bind', 'user-err'); body.appendChild(err);
+        var save = el('button', 'btn-submit', 'Save changes'); save.setAttribute('data-action', 'save-user'); save.style.marginTop = '8px'; body.appendChild(save);
+        region('user-modal').hidden = false;
+    }
+    async function saveUser() {
+        var p = { id: state.userEditId };
+        qa('[data-useredit]').forEach(function (i) { p[i.getAttribute('data-useredit')] = i.value; });
+        var err = q('[data-bind="user-err"]'); if (err) { err.classList.remove('show'); }
+        var r = await api('updateUser', p);
+        if (r && r.ok) { region('user-modal').hidden = true; toast('User updated', 'success'); renderAdmin(); refreshCounts(); }
+        else if (err) { err.textContent = (r && r.error) || 'Could not save.'; err.classList.add('show'); }
+    }
 
-    // ── Categories: add + toggle active + delete ──────────────────────────────
+    // ── Categories: grouped sections (each parent panel holds its sub-categories) ─
     async function renderCategories(body) {
         var r = await api('listCategories', {}); if (!r || !r.ok) { body.appendChild(emptyState('Could not load.')); return; }
         var cats = r.data.categories || [];
         state.categoriesAdmin = cats;
         var tops = cats.filter(function (c) { return !c.parent_id; });
 
+        // Add a top-level category (or a sub-category by picking a parent).
         var form = el('div', 'admin-form');
-        form.appendChild(el('div', 'admin-form-title', 'Add a category'));
+        form.appendChild(el('div', 'admin-form-title', 'Add a top-level category'));
         var row = el('div', 'admin-form-row');
         row.appendChild(inp({ type: 'text', placeholder: 'Category name', 'data-newcat': 'name' }));
         row.appendChild(inp({ type: 'color', value: '#4057F5', 'data-newcat': 'color' }));
@@ -613,34 +641,65 @@
         row.appendChild(sel(parentOpts, 'data-newcat', 'parent_id', ''));
         var add = el('button', 'btn-submit', 'Add'); add.setAttribute('data-action', 'add-category'); row.appendChild(add);
         form.appendChild(row);
+        form.appendChild(el('div', 'admin-form-hint', 'Tip: use the "＋ Add sub-category" button inside a category below to nest one directly under it.'));
         body.appendChild(form);
 
-        var card = el('div', 'table-card');
-        var table = el('table'); var thead = el('thead'); var htr = el('tr');
-        ['Name', 'Parent', 'Colour', 'Active', 'Actions'].forEach(function (h) { htr.appendChild(el('th', null, h)); }); thead.appendChild(htr); table.appendChild(thead);
-        var byId = {}; cats.forEach(function (c) { byId[c.category_id] = c; });
-        // Order children directly under their parent so the hierarchy reads top-down.
-        var ordered = [];
-        cats.filter(function (c) { return !c.parent_id; }).forEach(function (p) {
-            ordered.push(p);
-            cats.forEach(function (c) { if (c.parent_id === p.category_id) { ordered.push(c); } });
+        if (!tops.length) { body.appendChild(emptyState('No categories yet — add one above.')); return; }
+
+        tops.forEach(function (p) {
+            var kids = cats.filter(function (c) { return c.parent_id === p.category_id; });
+            var panel = el('div', 'table-card'); panel.style.marginBottom = '14px';
+
+            var head = el('div'); head.style.cssText = 'display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line,#e5e7eb);flex-wrap:wrap;';
+            var sw = el('span', 'cat-swatch'); sw.style.background = p.color || '#4057F5'; head.appendChild(sw);
+            var title = el('span', null, p.name); title.style.fontWeight = '600'; head.appendChild(title);
+            if (!Number(p.active)) { head.appendChild(el('span', 'role-chip', 'Disabled')); }
+            head.appendChild(el('span', 'table-header-count', kids.length + ' sub-categor' + (kids.length === 1 ? 'y' : 'ies')));
+            var spacer = el('span'); spacer.style.flex = '1'; head.appendChild(spacer);
+            head.appendChild(catActionBtns(p));
+            panel.appendChild(head);
+
+            var wrap = el('div'); wrap.style.padding = '8px 16px 14px;';
+            if (!kids.length) {
+                wrap.appendChild(el('div', 'admin-form-hint', 'No sub-categories yet.'));
+            } else {
+                kids.forEach(function (c) {
+                    var line = el('div'); line.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line,#eef0f4);flex-wrap:wrap;';
+                    var s2 = el('span', 'cat-swatch'); s2.style.background = c.color || '#4057F5'; line.appendChild(s2);
+                    line.appendChild(el('span', null, c.name));
+                    if (!Number(c.active)) { line.appendChild(el('span', 'role-chip', 'Disabled')); }
+                    var sp = el('span'); sp.style.flex = '1'; line.appendChild(sp);
+                    line.appendChild(catActionBtns(c));
+                    wrap.appendChild(line);
+                });
+            }
+
+            var addSub = el('button', 'btn-mini', '＋ Add sub-category'); addSub.setAttribute('data-action', 'show-subform'); addSub.setAttribute('data-id', p.category_id); addSub.style.marginTop = '10px'; wrap.appendChild(addSub);
+            var subform = el('div'); subform.setAttribute('data-region', 'subform-' + p.category_id); subform.hidden = true; subform.style.cssText = 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center;';
+            subform.appendChild(inp({ type: 'text', placeholder: 'Sub-category name', 'data-subfield': 'name' }));
+            subform.appendChild(inp({ type: 'color', value: p.color || '#4057F5', 'data-subfield': 'color' }));
+            var sAdd = el('button', 'btn-submit', 'Add'); sAdd.setAttribute('data-action', 'add-subcategory'); sAdd.setAttribute('data-id', p.category_id); subform.appendChild(sAdd);
+            var sCancel = el('button', 'btn-mini', 'Cancel'); sCancel.setAttribute('data-action', 'hide-subform'); sCancel.setAttribute('data-id', p.category_id); subform.appendChild(sCancel);
+            wrap.appendChild(subform);
+
+            panel.appendChild(wrap);
+            body.appendChild(panel);
         });
-        cats.forEach(function (c) { if (ordered.indexOf(c) === -1) { ordered.push(c); } });
-        var tb = el('tbody');
-        ordered.forEach(function (c) {
-            var tr = el('tr'); if (c.parent_id) { tr.className = 'cat-child'; }
-            tr.appendChild(el('td', null, (c.parent_id ? '↳ ' : '') + c.name));
-            tr.appendChild(el('td', null, c.parent_id && byId[c.parent_id] ? byId[c.parent_id].name : '—'));
-            var cc = el('td'); var sw = el('span', 'cat-swatch'); sw.style.background = c.color || '#4057F5'; cc.appendChild(sw); cc.appendChild(el('span', null, ' ' + (c.color || ''))); tr.appendChild(cc);
-            tr.appendChild(el('td', null, Number(c.active) ? 'Yes' : 'No'));
-            var ac = el('td', 'row-actions');
-            var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-category'); edit.setAttribute('data-id', c.category_id); ac.appendChild(edit);
-            var tgl = el('button', 'btn-mini', Number(c.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-category'); tgl.setAttribute('data-id', c.category_id); tgl.setAttribute('data-active', Number(c.active) ? '1' : '0'); ac.appendChild(tgl);
-            var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-category'); del.setAttribute('data-id', c.category_id); del.setAttribute('data-name', c.name); ac.appendChild(del);
-            tr.appendChild(ac);
-            tb.appendChild(tr);
-        });
-        table.appendChild(tb); card.appendChild(table); body.appendChild(card);
+    }
+    function catActionBtns(c) {
+        var ac = el('span', 'row-actions'); ac.style.cssText = 'display:inline-flex;gap:6px;';
+        var edit = el('button', 'btn-mini', 'Edit'); edit.setAttribute('data-action', 'edit-category'); edit.setAttribute('data-id', c.category_id); ac.appendChild(edit);
+        var tgl = el('button', 'btn-mini', Number(c.active) ? 'Disable' : 'Enable'); tgl.setAttribute('data-action', 'toggle-category'); tgl.setAttribute('data-id', c.category_id); tgl.setAttribute('data-active', Number(c.active) ? '1' : '0'); ac.appendChild(tgl);
+        var del = el('button', 'btn-mini btn-danger', 'Delete'); del.setAttribute('data-action', 'delete-category'); del.setAttribute('data-id', c.category_id); del.setAttribute('data-name', c.name); ac.appendChild(del);
+        return ac;
+    }
+    async function addSubcategory(catId) {
+        var wrap = q('[data-region="subform-' + catId + '"]'); if (!wrap) { return; }
+        var nameEl = wrap.querySelector('[data-subfield="name"]');
+        var colorEl = wrap.querySelector('[data-subfield="color"]');
+        var r = await api('createCategory', { name: nameEl ? nameEl.value : '', color: colorEl ? colorEl.value : '#4057F5', parent_id: catId });
+        toast(r && r.ok ? 'Sub-category added' : ((r && r.error) || 'Failed'), r && r.ok ? 'success' : 'danger');
+        if (r && r.ok) { renderAdmin(); }
     }
     async function addCategory() {
         var p = {}; qa('[data-newcat]').forEach(function (i) { p[i.getAttribute('data-newcat')] = i.value; });
@@ -1049,7 +1108,7 @@
     async function renderConfig(body) {
         var r = await api('getSystemConfig', {}); var cfg = (r && r.ok) ? r.data.config : {};
         var card = el('div', 'table-card'); var form = el('div', 'config-form'); form.style.padding = '20px';
-        [['company_name', 'Company name'], ['support_email', 'Support email'], ['portal_title', 'Portal title'], ['portal_tagline', 'Portal tagline'], ['ticket_prefix', 'Ticket prefix'], ['auto_close_days', 'Auto-close resolved tickets after (days, 0 = off)']].forEach(function (pair) {
+        [['company_name', 'Company name'], ['support_email', 'Support email'], ['portal_title', 'Portal title'], ['portal_tagline', 'Portal tagline'], ['ticket_prefix', 'Ticket prefix'], ['auto_close_days', 'Auto-close resolved tickets after (days, 0 = off)'], ['slack_webhook_url', 'Slack webhook URL (optional — alerts new tickets & SLA breaches)']].forEach(function (pair) {
             var f = el('div', 'field'); f.appendChild(el('label', null, pair[1])); var i = document.createElement('input'); i.value = cfg[pair[0]] || ''; i.setAttribute('data-cfg', pair[0]); f.appendChild(i); form.appendChild(f);
         });
         // Security: require two-factor authentication for admin accounts.
@@ -1113,10 +1172,16 @@
         else if (a === 'toggle-user') { toggleUser(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
         else if (a === 'reset-user-pw') { resetUserPw(t.getAttribute('data-id'), t.getAttribute('data-email')); }
         else if (a === 'delete-user') { deleteUser(t.getAttribute('data-id'), t.getAttribute('data-email')); }
+        else if (a === 'edit-user') { openUserEditor(t.getAttribute('data-id')); }
+        else if (a === 'save-user') { saveUser(); }
+        else if (a === 'close-user') { region('user-modal').hidden = true; }
         else if (a === 'add-category') { addCategory(); }
         else if (a === 'toggle-category') { toggleCategory(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }
         else if (a === 'delete-category') { deleteCategory(t.getAttribute('data-id'), t.getAttribute('data-name')); }
         else if (a === 'edit-category') { editCategory(t.getAttribute('data-id')); }
+        else if (a === 'show-subform') { var sf = q('[data-region="subform-' + t.getAttribute('data-id') + '"]'); if (sf) { sf.hidden = false; var n = sf.querySelector('[data-subfield="name"]'); if (n) { n.focus(); } } }
+        else if (a === 'hide-subform') { var sf2 = q('[data-region="subform-' + t.getAttribute('data-id') + '"]'); if (sf2) { sf2.hidden = true; } }
+        else if (a === 'add-subcategory') { addSubcategory(t.getAttribute('data-id')); }
         else if (a === 'add-organization') { addOrganization(); }
         else if (a === 'edit-organization') { editOrganization(t.getAttribute('data-id')); }
         else if (a === 'toggle-organization') { toggleOrganization(t.getAttribute('data-id'), t.getAttribute('data-active') === '1'); }

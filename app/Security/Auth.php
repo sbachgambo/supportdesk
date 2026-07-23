@@ -85,7 +85,7 @@ final class Auth
         // admin who has already enrolled still challenges only while the toggle is on).
         $role = (string) $user['role'];
         $adminMfaOn = AppConfig::get('require_admin_mfa', '1') === '1';
-        $mfaRequired = ($role === 'admin' && $adminMfaOn)
+        $mfaRequired = (in_array($role, ['admin', 'super_admin'], true) && $adminMfaOn)
             || (in_array($role, ['agent', 'org_admin'], true) && (int) $user['totp_enabled'] === 1);
 
         Session::start(

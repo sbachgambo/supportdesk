@@ -7,8 +7,13 @@
 --   → The admin has must_change_pw=1; change it on first login and enrol TOTP (§19.9).
 -- ══════════════════════════════════════════════════════════════════════════
 
--- ── users: 1 admin, 2 agents, 1 customer (§15 Phase 1 exit criteria) ──
+-- ── users: 1 super admin (hidden owner), 1 admin, 2 agents, 1 customer ──
+-- The super admin is the protected, hidden owner account: it never appears in the
+-- Agents list and cannot be edited/deactivated/deleted through the app. Change its
+-- password on first login (must_change_pw = 1). Seeded password = the shared seed one.
 INSERT INTO users (public_id, name, email, password_hash, role, active, must_change_pw, created_at) VALUES
+  ('SA-0001', 'System Super Admin', 'superadmin@p3a-support.com.ng',
+    '$2y$12$8xBEdTyz2WvCEtUH6HV4MONhzj2yVdJ2GX02kPAnGK2eZPROI.3uu', 'super_admin', 1, 1, UTC_TIMESTAMP()),
   ('AD-0001', 'System Admin', 'admin@p3a-support.com.ng',
     '$2y$12$8xBEdTyz2WvCEtUH6HV4MONhzj2yVdJ2GX02kPAnGK2eZPROI.3uu', 'admin', 1, 1, UTC_TIMESTAMP()),
   ('AG-0001', 'Agent One', 'agent1@p3a-support.com.ng',
@@ -20,9 +25,9 @@ INSERT INTO users (public_id, name, email, password_hash, role, active, must_cha
 
 -- ── config allowlist (§3 admin) ──
 INSERT INTO config (`key`, value) VALUES
-  ('company_name',         'P3A Support'),
+  ('company_name',         'TicketFlow'),
   ('support_email',        'support@p3a-support.com.ng'),
-  ('portal_title',         'P3A Support'),
+  ('portal_title',         'TicketFlow'),
   ('portal_tagline',       'How can we help you today?'),
   ('brand_color',          '#4057F5'),
   ('ticket_prefix',        'TKT'),

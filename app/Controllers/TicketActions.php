@@ -42,7 +42,8 @@ final class TicketActions
      */
     private function scope(): array
     {
-        if ((string) Session::role() === 'admin') {
+        // System admin AND super admin see every organization; others are org-scoped.
+        if (in_array((string) Session::role(), ['admin', 'super_admin'], true)) {
             return [true, null];
         }
         $me = User::findById((int) Session::userId());

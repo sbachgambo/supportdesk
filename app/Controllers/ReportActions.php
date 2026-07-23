@@ -18,7 +18,7 @@ final class ReportActions
     /** @return array{0:bool,1:?string} [allOrgs, orgId] */
     private function scope(): array
     {
-        if ((string) Session::role() === 'admin') {
+        if (in_array((string) Session::role(), ['admin', 'super_admin'], true)) {
             return [true, null];
         }
         $me = User::findById((int) Session::userId());

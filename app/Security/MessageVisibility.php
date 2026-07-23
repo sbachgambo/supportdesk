@@ -19,7 +19,7 @@ use App\Core\Db;
  */
 final class MessageVisibility
 {
-    private const STAFF_ROLES = ['agent', 'admin'];
+    private const STAFF_ROLES = ['agent', 'admin', 'super_admin'];
 
     /** True if this viewer role may see internal notes / system messages. */
     public static function seesInternal(string $viewerRole): bool

@@ -93,10 +93,11 @@ sort($tables);
 T::ok($tables === $expected, 'table names match the §7 schema exactly');
 
 $userCount = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
-T::eq(4, $userCount, 'SELECT COUNT(*) FROM users = 4');
+T::eq(5, $userCount, 'SELECT COUNT(*) FROM users = 5 (incl. hidden super admin)');
 
 $roles = $pdo->query('SELECT role, COUNT(*) c FROM users GROUP BY role')
              ->fetchAll(PDO::FETCH_KEY_PAIR);
+T::eq(1, (int) ($roles['super_admin'] ?? 0), '1 super admin seeded (hidden owner)');
 T::eq(1, (int) ($roles['admin'] ?? 0), '1 admin seeded');
 T::eq(2, (int) ($roles['agent'] ?? 0), '2 agents seeded');
 T::eq(1, (int) ($roles['customer'] ?? 0), '1 customer seeded');

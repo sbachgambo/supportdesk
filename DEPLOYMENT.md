@@ -236,14 +236,19 @@ PHP_CLI bin/check_env.php
 Review `database/migrations/` for any new migration files and apply them in
 order via phpMyAdmin or the CLI before the new code serves traffic.
 
-> **July 2026 release:** an existing database needs
+> **July 2026 release:** an existing database needs two migrations, in order:
 > `database/migrations/2026_07_22_products.sql` (Products/Projects table +
-> `tickets.product_id`), then add your real product names in *Admin → Products /
-> Projects*. Customers now receive real emails (submission receipt, agent-reply
+> `tickets.product_id`) and `database/migrations/2026_07_23_super_admin.sql`
+> (the `super_admin` role + a hidden owner account — **edit the seeded email in
+> that file to your real owner address before running it**, and change its
+> password on first login). Then add your real product names in *Admin → Products
+> / Projects*. Customers now receive real emails (submission receipt, agent-reply
 > notification, satisfaction request) — make sure `MAIL_*` in `.env` points at a
-> working mailbox before going live. Review the new *Admin → System*
-> auto-close-days setting and the *SLA Targets → SLA clock* (business-hours)
-> option after deploying.
+> working mailbox before going live. Optional: paste a Slack Incoming Webhook into
+> *Admin → System* to get new-ticket + SLA-breach alerts in Slack. Review the
+> *Admin → System* auto-close-days setting and *SLA Targets → SLA clock*
+> (business-hours) option after deploying. The brand name shown on every page
+> (incl. the landing) is *Admin → System → Company name*.
 
 ---
 

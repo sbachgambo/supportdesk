@@ -97,6 +97,52 @@ Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113
 T::eq(200, $st, 'deactivate a normal agent → 200');
 T::eq(0, (int) Db::scalar('SELECT COUNT(*) FROM sessions WHERE user_id = :u', [':u' => $newAgentId]), 'deactivation terminated the agent\'s sessions');
 
+// ── User editing (name / email / role / org) ─────────────────────────────────
+T::suite('Phase 7: user editing');
+[$st] = $call('updateUser', ['id' => $newAgentId, 'name' => 'Renamed Agent', 'email' => 'renamed@example.com']);
+T::eq(200, $st, 'system admin edits a user name + email');
+T::eq('renamed@example.com', (string) User::findById($newAgentId)['email'], 'email change persisted');
+// email collision rejected
+[$st] = $call('updateUser', ['id' => $newAgentId, 'email' => 'admin@p3a-support.com.ng']);
+T::eq(422, $st, 'editing to an in-use email is rejected');
+// role + org change (system admin only)
+$orgEdit = Organization::create(['name' => 'Edit Org', 'active' => 1]);
+[$st] = $call('updateUser', ['id' => $newAgentId, 'role' => 'org_admin', 'organization_id' => $orgEdit]);
+T::eq(200, $st, 'system admin changes role + organization');
+T::eq('org_admin', (string) User::findById($newAgentId)['role'], 'role change persisted');
+// cannot promote anyone to super_admin via the API
+[$st] = $call('updateUser', ['id' => $newAgentId, 'role' => 'super_admin']);
+T::eq(422, $st, 'cannot assign the super_admin role via updateUser');
+
+// ── System Super Admin: hidden + protected ───────────────────────────────────
+T::suite('Phase 7: super admin protection');
+$superId = (int) Db::scalar("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1");
+T::ok($superId > 0, 'a super admin exists in the database');
+[$st, $ul] = $call('listUsers', []);
+$listedRoles = array_map(static fn(array $u): string => (string) $u['role'], $ul['data']['users']);
+T::ok(!in_array('super_admin', $listedRoles, true), 'super admin is HIDDEN from the users list');
+// every mutation targeting the super admin is refused, even for a system admin
+foreach (['updateUser' => ['id' => $superId, 'name' => 'hax'],
+          'deactivateUser' => ['id' => $superId],
+          'deleteUser' => ['id' => $superId],
+          'adminResetPassword' => ['id' => $superId, 'password' => 'a-very-strong-pass-2026']] as $act => $pl) {
+    [$st] = $call($act, $pl);
+    T::eq(422, $st, "super admin protected from {$act}");
+}
+T::ok(Db::queryOne("SELECT 1 FROM users WHERE id = :i AND role = 'super_admin' AND active = 1", [':i' => $superId]) !== null, 'super admin remains intact + active after tamper attempts');
+
+// a super admin SESSION behaves as a full system admin (passes admin-gated authz)
+Session::start($superId, 'superadmin@p3a-support.com.ng', 'super_admin', '203.0.113.55', 'ua', true);
+[$st] = $call('getSystemConfig', []);
+T::eq(200, $st, 'super admin passes admin-only authz (getSystemConfig)');
+[$st, $bkp] = $call('runBackup', []);
+T::eq(200, $st, 'super admin passes admin-only authz (runBackup)');
+if (!empty($bkp['data']['file'])) {
+    $backups[] = \App\Services\BackupService::backupDir() . '/' . $bkp['data']['file'];
+}
+// restore the system-admin session for the remaining tests
+Session::start((int) $admin['id'], (string) $admin['email'], 'admin', '203.0.113.50', 'ua', true);
+
 // ── SLA targets validation (§3) ──────────────────────────────────────────────
 T::suite('Phase 7: SLA targets');
 $slaOk = ['sla_response_urgent' => 15, 'sla_resolution_urgent' => 120, 'sla_response_high' => 60, 'sla_resolution_high' => 240, 'sla_response_normal' => 240, 'sla_resolution_normal' => 480, 'sla_response_low' => 480, 'sla_resolution_low' => 1440];
@@ -116,6 +162,13 @@ T::eq('Acme Support', AppConfig::get('company_name'), 'allowlisted key written')
 T::eq('15', AppConfig::get('sla_response_urgent'), 'non-allowlisted key ignored (mass-assignment blocked)');
 [$st] = $call('updateConfig', ['brand_color' => 'notacolor']);
 T::eq(422, $st, 'invalid brand colour rejected');
+// Slack webhook: must be an https URL, or blank to disable
+[$st] = $call('updateConfig', ['slack_webhook_url' => 'ftp://nope']);
+T::eq(422, $st, 'non-https Slack webhook rejected');
+[$st] = $call('updateConfig', ['slack_webhook_url' => 'https://hooks.slack.com/services/T00/B00/xxxx']);
+T::eq(200, $st, 'valid https Slack webhook accepted');
+[$st] = $call('updateConfig', ['slack_webhook_url' => '']);
+T::eq(200, $st, 'blank Slack webhook accepted (disables integration)');
 
 // ── routing rules: disabled rule does NOT fire (§18) ─────────────────────────
 T::suite('Phase 7: routing rules — disabled never fires (§18)');

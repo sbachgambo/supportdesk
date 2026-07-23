@@ -93,7 +93,8 @@ try {
     [$st, $hdr, $body] = $get("$base/");
     T::eq(200, $st, '/ → 200');
     T::ok(str_contains($hdr, 'text/html'), '/ content-type HTML');
-    T::ok(str_contains($body, '<h1>'), '/ renders a view');
+    T::ok(str_contains($body, '<h1'), '/ renders a view (heading)');
+    T::ok(str_contains($body, 'Submit a request') && str_contains($body, 'Staff sign in'), '/ landing shows the customer + staff entry points');
 
     // ── exception → generic page + request id, NO stack trace (§10.10) ──
     T::suite('Smoke: exception handling (§10.10)');

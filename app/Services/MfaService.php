@@ -23,7 +23,7 @@ final class MfaService
 {
     public static function requiresMfa(string $role): bool
     {
-        if ($role === 'admin') {
+        if (in_array($role, ['admin', 'super_admin'], true)) {
             return AppConfig::get('require_admin_mfa', '1') === '1';
         }
         return in_array($role, ['agent', 'org_admin'], true);
@@ -107,7 +107,7 @@ final class MfaService
         if ($user === null) {
             return ['ok' => false, 'error' => 'User not found.'];
         }
-        if ((string) $user['role'] === 'admin') {
+        if (in_array((string) $user['role'], ['admin', 'super_admin'], true)) {
             return ['ok' => false, 'error' => 'MFA is required for admins and cannot be disabled.'];
         }
         User::disableTotp($userId);
